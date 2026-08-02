@@ -9,7 +9,9 @@ import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 interface Producto {
   id?: number;
   codigo_barras: string;
-  nombre: string;
+  nombre_articulo: string;
+  marca?: string | null;
+  presentacion?: string | null;
   precio: number;
 }
 
@@ -37,6 +39,8 @@ export default function NegocioPaginaDefinitiva() {
   const [codigoBarras, setCodigoBarras] = useState('');
   const [nombreProducto, setNombreProducto] = useState('');
   const [precioProducto, setPrecioProducto] = useState('');
+  const [marcaProducto, setMarcaProducto] = useState('');
+  const [presentacionProducto, setPresentacionProducto] = useState('');
   const [guardando, setGuardando] = useState(false);
 
   // Estado del Escáner de Cámara
@@ -269,20 +273,40 @@ export default function NegocioPaginaDefinitiva() {
   }, [mostrarEscaner]);
 
   // 3. Guardar Producto en Supabase
+  const limpiarFormularioProducto = () => {
+    setCodigoBarras('');
+    setNombreProducto('');
+    setPrecioProducto('');
+    setMarcaProducto('');
+    setPresentacionProducto('');
+  };
+
   const handleAgregarProducto = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!negocio || !nombreProducto || !precioProducto) return;
+    if (!negocio) return;
+
+    if (!nombreProducto.trim()) {
+      alert('Completá el Nombre del Artículo.');
+      return;
+    }
+
+    const nuevoPrecio = parseFloat(precioProducto);
+    if (!precioProducto || Number.isNaN(nuevoPrecio) || nuevoPrecio < 0) {
+      alert('Ingresá un Precio ($) válido.');
+      return;
+    }
 
     setGuardando(true);
-    const nuevoPrecio = parseFloat(precioProducto);
 
     const { data, error } = await supabase
       .from('productos')
       .insert([
         {
           negocio_id: negocio.id,
-          codigo_barras: codigoBarras,
-          nombre: nombreProducto,
+          codigo_barras: codigoBarras.trim() || null,
+          nombre_articulo: nombreProducto.trim(),
+          marca: marcaProducto.trim() || null,
+          presentacion: presentacionProducto.trim() || null,
           precio: nuevoPrecio,
         },
       ])
@@ -291,12 +315,21 @@ export default function NegocioPaginaDefinitiva() {
     setGuardando(false);
 
     if (error) {
-      alert('Error al guardar el producto: ' + error.message);
-    } else if (data && data.length > 0) {
+      console.error('Error al guardar producto:', error);
+      const tipPermisos =
+        error.code === '42501' || /permission|policy|rls/i.test(error.message)
+          ? ' Verificá los permisos (RLS) de la tabla productos.'
+          : '';
+      alert(`Error al guardar: ${error.message}.${tipPermisos}`);
+      return;
+    }
+
+    if (data && data.length > 0) {
       setProductos([data[0], ...productos]);
-      setCodigoBarras('');
-      setNombreProducto('');
-      setPrecioProducto('');
+      limpiarFormularioProducto();
+      alert('Producto guardado con éxito.');
+    } else {
+      alert('Error al guardar: no se recibió confirmación de Supabase. Verificá permisos.');
     }
   };
 
@@ -390,10 +423,17 @@ export default function NegocioPaginaDefinitiva() {
           )}
 
           <form onSubmit={handleAgregarProducto} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {/* Fila 1: Código de Barras + Precio */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">Código de Barras</label>
+                <label
+                  htmlFor="codigo-barras"
+                  className="block text-xs font-medium text-slate-400 mb-1"
+                >
+                  Código de Barras
+                </label>
                 <input
+                  id="codigo-barras"
                   type="text"
                   placeholder="Escáner o manual..."
                   value={codigoBarras}
@@ -403,26 +443,77 @@ export default function NegocioPaginaDefinitiva() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">Nombre del Artículo</label>
+                <label
+                  htmlFor="precio-producto"
+                  className="block text-xs font-medium text-slate-400 mb-1"
+                >
+                  Precio ($)
+                </label>
                 <input
-                  type="text"
+                  id="precio-producto"
+                  type="number"
+                  step="0.01"
+                  min="0"
                   required
-                  placeholder="Ej: Palitos Salados Abe"
-                  value={nombreProducto}
-                  onChange={(e) => setNombreProducto(formatTitleCase(e.target.value))}
+                  placeholder="Ej: 1000"
+                  value={precioProducto}
+                  onChange={(e) => setPrecioProducto(e.target.value)}
+                  className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            {/* Fila 2: Nombre del Artículo */}
+            <div>
+              <label
+                htmlFor="nombre-articulo"
+                className="block text-xs font-medium text-slate-400 mb-1"
+              >
+                Nombre del Artículo
+              </label>
+              <input
+                id="nombre-articulo"
+                type="text"
+                required
+                placeholder="Ej: Palitos Salados"
+                value={nombreProducto}
+                onChange={(e) => setNombreProducto(formatTitleCase(e.target.value))}
+                className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+              />
+            </div>
+
+            {/* Fila 3: Marca + Presentación */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label
+                  htmlFor="marca-producto"
+                  className="block text-xs font-medium text-slate-400 mb-1"
+                >
+                  Marca
+                </label>
+                <input
+                  id="marca-producto"
+                  type="text"
+                  placeholder='Ej: "Si Diet", "Coca-Cola"'
+                  value={marcaProducto}
+                  onChange={(e) => setMarcaProducto(formatTitleCase(e.target.value))}
                   className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">Precio ($)</label>
+                <label
+                  htmlFor="presentacion-producto"
+                  className="block text-xs font-medium text-slate-400 mb-1"
+                >
+                  Presentación / Contenido
+                </label>
                 <input
-                  type="number"
-                  step="0.01"
-                  required
-                  placeholder="Ej: 1000"
-                  value={precioProducto}
-                  onChange={(e) => setPrecioProducto(e.target.value)}
+                  id="presentacion-producto"
+                  type="text"
+                  placeholder='Ej: "500 ml", "1 L", "Caja x 12"'
+                  value={presentacionProducto}
+                  onChange={(e) => setPresentacionProducto(e.target.value)}
                   className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
                 />
               </div>
@@ -448,16 +539,25 @@ export default function NegocioPaginaDefinitiva() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {productos.map((prod) => (
                 <div
-                  key={prod.id || Math.random()}
-                  className="bg-slate-800/60 border border-slate-700/80 p-4 rounded-2xl flex justify-between items-center"
+                  key={prod.id ?? `${prod.codigo_barras}-${prod.nombre_articulo}-${prod.precio}`}
+                  className="bg-slate-800/60 border border-slate-700/80 p-4 rounded-2xl flex justify-between items-start gap-3"
                 >
-                  <div>
-                    <p className="font-semibold text-white">{prod.nombre}</p>
-                    <p className="text-xs text-slate-400">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-white break-words">
+                      {prod.nombre_articulo}
+                    </p>
+                    {(prod.marca || prod.presentacion) && (
+                      <p className="text-xs text-slate-300 mt-1 break-words">
+                        {[prod.marca, prod.presentacion].filter(Boolean).join(' · ')}
+                      </p>
+                    )}
+                    <p className="text-xs text-slate-400 mt-1">
                       Código: {prod.codigo_barras || 'Sin código'}
                     </p>
                   </div>
-                  <span className="text-emerald-400 font-bold text-lg">${prod.precio}</span>
+                  <span className="text-emerald-400 font-bold text-lg shrink-0">
+                    ${prod.precio}
+                  </span>
                 </div>
               ))}
             </div>

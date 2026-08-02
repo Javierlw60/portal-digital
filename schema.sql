@@ -39,7 +39,13 @@ CREATE TABLE IF NOT EXISTS productos (
     negocio_id INT REFERENCES negocios(id) ON DELETE CASCADE,
     codigo_barras VARCHAR(50),
     nombre_articulo VARCHAR(200) NOT NULL,
+    marca VARCHAR(100),
+    presentacion VARCHAR(100),
     precio DECIMAL(10, 2) NOT NULL,
     foto_url TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Migración opcional si la tabla ya existía sin marca/presentacion:
+-- ALTER TABLE productos ADD COLUMN IF NOT EXISTS marca VARCHAR(100);
+-- ALTER TABLE productos ADD COLUMN IF NOT EXISTS presentacion VARCHAR(100);
