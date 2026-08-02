@@ -1,65 +1,101 @@
-import Image from "next/image";
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
 export default function Home() {
+  const router = useRouter();
+  const [localidadInput, setLocalidadInput] = useState('');
+  
+  const [activeBanner, setActiveBanner] = useState(0);
+  const banners = [
+    { title: "¡Supermercado Los Primos!", offer: "30% OFF en Fideos y Arroz", localidad: "garin", color: "from-blue-600 to-indigo-700" },
+    { title: "Kiosco 24hs El Rápido", offer: "2x1 en Energizantes toda la semana", localidad: "garin", color: "from-emerald-600 to-teal-700" }
+  ];
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setActiveBanner((prev) => (prev === 0 ? 1 : 0));
+    }, 7000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const handleBuscarLocalidad = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!localidadInput.trim()) return;
+    const slug = localidadInput.trim().toLowerCase().replace(/\s+/g, '-');
+    router.push(`/${slug}`);
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main className="min-h-screen bg-slate-900 text-white flex flex-col justify-between">
+      <header className="max-w-6xl mx-auto w-full p-6 flex justify-between items-center">
+        <div className="flex items-center gap-2">
+          <span className="bg-blue-500 text-white font-black text-xl px-3 py-1 rounded-xl">PD</span>
+          <span className="text-xl font-bold tracking-tight">Portal Digital</span>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+        <a 
+          href="/registro" 
+          className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 rounded-xl font-medium transition shadow-lg shadow-blue-500/30"
+        >
+          Sumar mi Negocio
+        </a>
+      </header>
+
+      <section className="max-w-4xl mx-auto text-center px-4 py-12">
+        <span className="bg-blue-500/10 text-blue-400 border border-blue-500/20 text-xs px-4 py-1.5 rounded-full font-semibold uppercase tracking-wider">
+          La Revista Comercial de tu Ciudad
+        </span>
+        <h1 className="text-4xl md:text-6xl font-extrabold mt-6 mb-6 tracking-tight">
+          Encontrá los mejores precios y comercios <span className="text-blue-500">cerca tuyo</span>.
+        </h1>
+        <p className="text-slate-400 text-lg mb-8 max-w-2xl mx-auto">
+          Kioscos, almacenes, verdulerías y negocios locales actualizados a diario con ofertas reales.
+        </p>
+
+        <form onSubmit={handleBuscarLocalidad} className="bg-slate-800 p-3 rounded-2xl border border-slate-700 max-w-xl mx-auto flex gap-3 shadow-2xl">
+          <input 
+            type="text" 
+            placeholder="Escribí tu localidad (Ej: Garín, Tigre, Escobar)..." 
+            value={localidadInput}
+            onChange={(e) => setLocalidadInput(e.target.value)}
+            className="bg-transparent flex-1 px-4 text-white placeholder-slate-400 focus:outline-none"
+          />
+          <button 
+            type="submit" 
+            className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-xl font-semibold transition"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            Explorar
+          </button>
+        </form>
+      </section>
+
+      <section className="max-w-5xl mx-auto w-full px-4 mb-16">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Ofertas Destacadas de la Zona</h2>
+          <span className="text-xs text-slate-500">Rotación automática cada 7s</span>
         </div>
-      </main>
-    </div>
+        
+        <div 
+          onClick={() => router.push(`/${banners[activeBanner].localidad}`)}
+          className={`cursor-pointer bg-gradient-to-r ${banners[activeBanner].color} p-8 rounded-3xl shadow-2xl transition-all duration-500 flex flex-col md:flex-row justify-between items-center`}
+        >
+          <div>
+            <span className="bg-white/20 text-white text-xs px-3 py-1 rounded-full font-medium mb-3 inline-block">
+              🔥 Oferta Destacada
+            </span>
+            <h3 className="text-3xl font-black mb-2">{banners[activeBanner].title}</h3>
+            <p className="text-white/90 text-lg">{banners[activeBanner].offer}</p>
+          </div>
+          <div className="mt-6 md:mt-0 bg-white text-slate-900 px-6 py-3 rounded-xl font-bold hover:bg-slate-100 transition shadow-lg">
+            Ver Negocio &rarr;
+          </div>
+        </div>
+      </section>
+
+      <footer className="border-t border-slate-800 text-center py-6 text-slate-500 text-sm">
+        &copy; 2026 Portal Digital. Todos los derechos reservados.
+      </footer>
+    </main>
   );
 }
