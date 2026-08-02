@@ -4,15 +4,19 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
+import { compressImageFile } from '@/lib/compressImage';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
+
+const BUCKET_FOTOS = 'productos-fotos';
 
 interface Producto {
   id?: number;
-  codigo_barras: string;
+  codigo_barras: string | null;
   nombre_articulo: string;
   marca?: string | null;
   presentacion?: string | null;
   precio: number;
+  foto_url?: string | null;
 }
 
 interface Negocio {
@@ -41,7 +45,13 @@ export default function NegocioPaginaDefinitiva() {
   const [precioProducto, setPrecioProducto] = useState('');
   const [marcaProducto, setMarcaProducto] = useState('');
   const [presentacionProducto, setPresentacionProducto] = useState('');
+  const [fotoPreview, setFotoPreview] = useState<string | null>(null);
+  const [fotoBlob, setFotoBlob] = useState<Blob | null>(null);
+  const [fotoUrlActual, setFotoUrlActual] = useState<string | null>(null);
+  const [productoEditandoId, setProductoEditandoId] = useState<number | null>(null);
   const [guardando, setGuardando] = useState(false);
+  const [procesandoFoto, setProcesandoFoto] = useState(false);
+  const [autocompletando, setAutocompletando] = useState(false);
 
   // Estado del Escáner de Cámara
   const [mostrarEscaner, setMostrarEscaner] = useState(false);
@@ -272,16 +282,183 @@ export default function NegocioPaginaDefinitiva() {
     };
   }, [mostrarEscaner]);
 
-  // 3. Guardar Producto en Supabase
+  // Autocompletado global por código de barras
+  useEffect(() => {
+    const codigo = codigoBarras.trim();
+    if (codigo.length < 6 || productoEditandoId) return;
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      setAutocompletando(true);
+      try {
+        const { data: comunidad } = await supabase
+          .from('productos')
+          .select('nombre_articulo, marca, presentacion, foto_url')
+          .eq('codigo_barras', codigo)
+          .not('nombre_articulo', 'is', null)
+          .order('id', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (cancelled) return;
+
+        if (comunidad) {
+          if (!nombreProducto.trim() && comunidad.nombre_articulo) {
+            setNombreProducto(comunidad.nombre_articulo);
+          }
+          if (!marcaProducto.trim() && comunidad.marca) {
+            setMarcaProducto(comunidad.marca);
+          }
+          if (!presentacionProducto.trim() && comunidad.presentacion) {
+            setPresentacionProducto(comunidad.presentacion);
+          }
+          if (!fotoPreview && !fotoBlob && comunidad.foto_url) {
+            setFotoUrlActual(comunidad.foto_url);
+            setFotoPreview(comunidad.foto_url);
+          }
+          return;
+        }
+
+        const { data: catalogo } = await supabase
+          .from('catalogo_global_barras')
+          .select('nombre_estandar, marca, presentacion, foto_oficial_url')
+          .eq('codigo_barras', codigo)
+          .maybeSingle();
+
+        if (cancelled || !catalogo) return;
+
+        if (!nombreProducto.trim() && catalogo.nombre_estandar) {
+          setNombreProducto(catalogo.nombre_estandar);
+        }
+        if (!marcaProducto.trim() && catalogo.marca) {
+          setMarcaProducto(catalogo.marca);
+        }
+        if (!presentacionProducto.trim() && catalogo.presentacion) {
+          setPresentacionProducto(catalogo.presentacion);
+        }
+        if (!fotoPreview && !fotoBlob && catalogo.foto_oficial_url) {
+          setFotoUrlActual(catalogo.foto_oficial_url);
+          setFotoPreview(catalogo.foto_oficial_url);
+        }
+      } catch (err) {
+        console.warn('Autocompletado por código falló:', err);
+      } finally {
+        if (!cancelled) setAutocompletando(false);
+      }
+    }, 450);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // Solo reacciona al código; no reescribe campos ya editados a mano salvo que estén vacíos
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [codigoBarras, productoEditandoId]);
+
+  // 3. Guardar / actualizar producto en Supabase
   const limpiarFormularioProducto = () => {
+    if (fotoPreview?.startsWith('blob:')) {
+      URL.revokeObjectURL(fotoPreview);
+    }
     setCodigoBarras('');
     setNombreProducto('');
     setPrecioProducto('');
     setMarcaProducto('');
     setPresentacionProducto('');
+    setFotoPreview(null);
+    setFotoBlob(null);
+    setFotoUrlActual(null);
+    setProductoEditandoId(null);
   };
 
-  const handleAgregarProducto = async (e: React.FormEvent) => {
+  const handleSeleccionarFoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      alert('Seleccioná un archivo de imagen válido.');
+      return;
+    }
+
+    setProcesandoFoto(true);
+    try {
+      const { blob, previewUrl } = await compressImageFile(file);
+      if (fotoPreview?.startsWith('blob:')) {
+        URL.revokeObjectURL(fotoPreview);
+      }
+      setFotoBlob(blob);
+      setFotoPreview(previewUrl);
+    } catch (err) {
+      console.error(err);
+      alert('No se pudo procesar la foto. Probá con otra imagen.');
+    } finally {
+      setProcesandoFoto(false);
+    }
+  };
+
+  const subirFotoSiHay = async (): Promise<string | null> => {
+    if (!fotoBlob || !negocio) return fotoUrlActual;
+
+    const path = `${negocio.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+    const { error: uploadError } = await supabase.storage
+      .from(BUCKET_FOTOS)
+      .upload(path, fotoBlob, {
+        contentType: 'image/jpeg',
+        upsert: false,
+      });
+
+    if (uploadError) {
+      throw new Error(
+        `Error al subir la foto: ${uploadError.message}. Verificá el bucket "${BUCKET_FOTOS}" y sus permisos.`
+      );
+    }
+
+    const { data } = supabase.storage.from(BUCKET_FOTOS).getPublicUrl(path);
+    return data.publicUrl;
+  };
+
+  const sincronizarCatalogoGlobal = async (
+    codigo: string,
+    fotoUrl: string | null
+  ) => {
+    if (!codigo) return;
+
+    const payload = {
+      codigo_barras: codigo,
+      nombre_estandar: nombreProducto.trim(),
+      marca: marcaProducto.trim() || null,
+      presentacion: presentacionProducto.trim() || null,
+      foto_oficial_url: fotoUrl,
+    };
+
+    const { error } = await supabase.from('catalogo_global_barras').upsert(payload, {
+      onConflict: 'codigo_barras',
+    });
+
+    if (error) {
+      console.warn('No se pudo actualizar el catálogo global:', error.message);
+    }
+  };
+
+  const handleEditarProducto = (prod: Producto) => {
+    if (!prod.id) return;
+    if (fotoPreview?.startsWith('blob:')) {
+      URL.revokeObjectURL(fotoPreview);
+    }
+    setProductoEditandoId(prod.id);
+    setCodigoBarras(prod.codigo_barras || '');
+    setNombreProducto(prod.nombre_articulo || '');
+    setPrecioProducto(String(prod.precio ?? ''));
+    setMarcaProducto(prod.marca || '');
+    setPresentacionProducto(prod.presentacion || '');
+    setFotoUrlActual(prod.foto_url || null);
+    setFotoPreview(prod.foto_url || null);
+    setFotoBlob(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleGuardarProducto = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!negocio) return;
 
@@ -298,38 +475,85 @@ export default function NegocioPaginaDefinitiva() {
 
     setGuardando(true);
 
-    const { data, error } = await supabase
-      .from('productos')
-      .insert([
-        {
-          negocio_id: negocio.id,
-          codigo_barras: codigoBarras.trim() || null,
-          nombre_articulo: nombreProducto.trim(),
-          marca: marcaProducto.trim() || null,
-          presentacion: presentacionProducto.trim() || null,
-          precio: nuevoPrecio,
-        },
-      ])
-      .select();
+    try {
+      const fotoUrl = await subirFotoSiHay();
+      const codigo = codigoBarras.trim() || null;
 
-    setGuardando(false);
+      const payload = {
+        negocio_id: negocio.id,
+        codigo_barras: codigo,
+        nombre_articulo: nombreProducto.trim(),
+        marca: marcaProducto.trim() || null,
+        presentacion: presentacionProducto.trim() || null,
+        precio: nuevoPrecio,
+        foto_url: fotoUrl,
+      };
 
-    if (error) {
-      console.error('Error al guardar producto:', error);
-      const tipPermisos =
-        error.code === '42501' || /permission|policy|rls/i.test(error.message)
-          ? ' Verificá los permisos (RLS) de la tabla productos.'
-          : '';
-      alert(`Error al guardar: ${error.message}.${tipPermisos}`);
-      return;
-    }
+      let data: Producto[] | null = null;
+      let errorMessage = '';
 
-    if (data && data.length > 0) {
-      setProductos([data[0], ...productos]);
-      limpiarFormularioProducto();
-      alert('Producto guardado con éxito.');
-    } else {
-      alert('Error al guardar: no se recibió confirmación de Supabase. Verificá permisos.');
+      if (productoEditandoId) {
+        const { data: updated, error } = await supabase
+          .from('productos')
+          .update(payload)
+          .eq('id', productoEditandoId)
+          .select();
+
+        if (error) {
+          errorMessage = error.message;
+          if (error.code === '42501' || /permission|policy|rls/i.test(error.message)) {
+            errorMessage += ' Verificá los permisos (RLS) de la tabla productos.';
+          }
+        } else {
+          data = updated;
+        }
+      } else {
+        const { data: inserted, error } = await supabase
+          .from('productos')
+          .insert([payload])
+          .select();
+
+        if (error) {
+          errorMessage = error.message;
+          if (error.code === '42501' || /permission|policy|rls/i.test(error.message)) {
+            errorMessage += ' Verificá los permisos (RLS) de la tabla productos.';
+          }
+        } else {
+          data = inserted;
+        }
+      }
+
+      if (errorMessage) {
+        alert(`Error al guardar: ${errorMessage}`);
+        return;
+      }
+
+      if (data && data.length > 0) {
+        const guardado = data[0];
+        const eraEdicion = Boolean(productoEditandoId);
+
+        if (eraEdicion) {
+          setProductos((prev) =>
+            prev.map((p) => (p.id === productoEditandoId ? guardado : p))
+          );
+        } else {
+          setProductos((prev) => [guardado, ...prev]);
+        }
+
+        if (codigo) {
+          await sincronizarCatalogoGlobal(codigo, fotoUrl);
+        }
+
+        limpiarFormularioProducto();
+        alert(eraEdicion ? 'Producto actualizado con éxito.' : 'Producto guardado con éxito.');
+      } else {
+        alert('Error al guardar: no se recibió confirmación de Supabase. Verificá permisos.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : 'Error al guardar el producto.');
+    } finally {
+      setGuardando(false);
     }
   };
 
@@ -393,21 +617,38 @@ export default function NegocioPaginaDefinitiva() {
         </section>
 
         {/* CARGA RÁPIDA DE PRODUCTOS */}
-        <section className="bg-slate-900 border border-slate-800 p-6 rounded-3xl shadow-2xl space-y-4">
+        <section className="bg-slate-900 border border-slate-800 p-4 sm:p-6 rounded-3xl shadow-2xl space-y-4">
           <div className="flex justify-between items-center flex-wrap gap-2">
-            <h2 className="text-lg font-bold text-blue-400 flex items-center gap-2">
-              ⚡ Carga Rápida de Productos
-            </h2>
-            <button
-              type="button"
-              onClick={() => setMostrarEscaner(!mostrarEscaner)}
-              className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2"
-            >
-              📷 {mostrarEscaner ? 'Cerrar Cámara' : 'Escanear con Cámara'}
-            </button>
+            <div>
+              <h2 className="text-lg font-bold text-blue-400">
+                Carga Rápida de Productos
+              </h2>
+              {productoEditandoId && (
+                <p className="text-xs text-amber-400 mt-1">
+                  Editando producto #{productoEditandoId}
+                </p>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {productoEditandoId && (
+                <button
+                  type="button"
+                  onClick={limpiarFormularioProducto}
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 py-2 rounded-xl text-xs font-bold transition"
+                >
+                  Cancelar
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setMostrarEscaner(!mostrarEscaner)}
+                className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition"
+              >
+                {mostrarEscaner ? 'Cerrar Cámara' : 'Escanear'}
+              </button>
+            </div>
           </div>
 
-          {/* VISOR DE CÁMARA */}
           {mostrarEscaner && (
             <div className="bg-slate-950 border border-slate-800 p-4 rounded-3xl max-w-xl mx-auto shadow-2xl">
               <div
@@ -422,8 +663,7 @@ export default function NegocioPaginaDefinitiva() {
             </div>
           )}
 
-          <form onSubmit={handleAgregarProducto} className="space-y-4">
-            {/* Fila 1: Código de Barras + Precio */}
+          <form onSubmit={handleGuardarProducto} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label
@@ -431,10 +671,14 @@ export default function NegocioPaginaDefinitiva() {
                   className="block text-xs font-medium text-slate-400 mb-1"
                 >
                   Código de Barras
+                  {autocompletando && (
+                    <span className="ml-2 text-blue-400 font-normal">buscando…</span>
+                  )}
                 </label>
                 <input
                   id="codigo-barras"
                   type="text"
+                  inputMode="numeric"
                   placeholder="Escáner o manual..."
                   value={codigoBarras}
                   onChange={(e) => setCodigoBarras(e.target.value)}
@@ -463,7 +707,6 @@ export default function NegocioPaginaDefinitiva() {
               </div>
             </div>
 
-            {/* Fila 2: Nombre del Artículo */}
             <div>
               <label
                 htmlFor="nombre-articulo"
@@ -482,7 +725,6 @@ export default function NegocioPaginaDefinitiva() {
               />
             </div>
 
-            {/* Fila 3: Marca + Presentación */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label
@@ -519,35 +761,108 @@ export default function NegocioPaginaDefinitiva() {
               </div>
             </div>
 
+            {/* Foto */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-16 h-16 rounded-xl bg-slate-800 border border-slate-700 overflow-hidden shrink-0 flex items-center justify-center">
+                  {fotoPreview ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={fotoPreview}
+                      alt="Vista previa del producto"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-[10px] text-slate-500 px-1 text-center">Sin foto</span>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-slate-300">Foto del producto</p>
+                  <p className="text-[11px] text-slate-500">
+                    Se comprime a máx. 800px / JPEG 75%
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2 sm:ml-auto">
+                <label className="cursor-pointer bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-4 py-2.5 rounded-xl text-xs font-bold transition">
+                  {procesandoFoto ? 'Procesando…' : 'Tomar / Subir Foto'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    disabled={procesandoFoto || guardando}
+                    onChange={handleSeleccionarFoto}
+                  />
+                </label>
+                {fotoPreview && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (fotoPreview?.startsWith('blob:')) {
+                        URL.revokeObjectURL(fotoPreview);
+                      }
+                      setFotoPreview(null);
+                      setFotoBlob(null);
+                      setFotoUrlActual(null);
+                    }}
+                    className="bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-3 py-2.5 rounded-xl text-xs font-bold transition"
+                  >
+                    Quitar
+                  </button>
+                )}
+              </div>
+            </div>
+
             <button
               type="submit"
-              disabled={guardando}
+              disabled={guardando || procesandoFoto}
               className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl transition shadow-lg shadow-blue-600/30 disabled:opacity-50"
             >
-              {guardando ? 'Guardando...' : 'Agregar Producto'}
+              {guardando
+                ? 'Guardando...'
+                : productoEditandoId
+                  ? 'Actualizar Producto'
+                  : 'Agregar Producto'}
             </button>
           </form>
         </section>
 
         {/* CATÁLOGO ACTUALIZADO */}
-        <section className="bg-slate-900 border border-slate-800 p-6 rounded-3xl shadow-2xl space-y-4">
+        <section className="bg-slate-900 border border-slate-800 p-4 sm:p-6 rounded-3xl shadow-2xl space-y-4">
           <h2 className="text-lg font-bold">Catálogo Actualizado ({productos.length})</h2>
 
           {productos.length === 0 ? (
-            <p className="text-sm text-slate-500 text-center py-6">No hay productos registrados todavía.</p>
+            <p className="text-sm text-slate-500 text-center py-6">
+              No hay productos registrados todavía.
+            </p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {productos.map((prod) => (
                 <div
                   key={prod.id ?? `${prod.codigo_barras}-${prod.nombre_articulo}-${prod.precio}`}
-                  className="bg-slate-800/60 border border-slate-700/80 p-4 rounded-2xl flex justify-between items-start gap-3"
+                  className="bg-slate-800/60 border border-slate-700/80 p-4 rounded-2xl flex gap-3"
                 >
-                  <div className="min-w-0">
+                  <div className="w-14 h-14 rounded-xl bg-slate-900 border border-slate-700 overflow-hidden shrink-0 flex items-center justify-center">
+                    {prod.foto_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={prod.foto_url}
+                        alt={prod.nombre_articulo}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-[10px] text-slate-600">N/A</span>
+                    )}
+                  </div>
+
+                  <div className="min-w-0 flex-1">
                     <p className="font-semibold text-white break-words">
                       {prod.nombre_articulo}
                     </p>
                     {(prod.marca || prod.presentacion) && (
-                      <p className="text-xs text-slate-300 mt-1 break-words">
+                      <p className="text-xs text-slate-300 mt-0.5 break-words">
                         {[prod.marca, prod.presentacion].filter(Boolean).join(' · ')}
                       </p>
                     )}
@@ -555,9 +870,21 @@ export default function NegocioPaginaDefinitiva() {
                       Código: {prod.codigo_barras || 'Sin código'}
                     </p>
                   </div>
-                  <span className="text-emerald-400 font-bold text-lg shrink-0">
-                    ${prod.precio}
-                  </span>
+
+                  <div className="flex flex-col items-end gap-2 shrink-0">
+                    <span className="text-emerald-400 font-bold text-lg">
+                      ${prod.precio}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleEditarProducto(prod)}
+                      className="text-xs font-bold text-slate-300 hover:text-white bg-slate-900/80 border border-slate-700 px-2.5 py-1.5 rounded-lg transition"
+                      title="Editar producto"
+                      aria-label={`Editar ${prod.nombre_articulo}`}
+                    >
+                      Editar
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

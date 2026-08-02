@@ -29,9 +29,18 @@ CREATE TABLE IF NOT EXISTS catalogo_global_barras (
     id SERIAL PRIMARY KEY,
     codigo_barras VARCHAR(50) UNIQUE NOT NULL,
     nombre_estandar VARCHAR(200) NOT NULL,
+    marca VARCHAR(100),
+    presentacion VARCHAR(100),
     foto_oficial_url TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Migración opcional catálogo global:
+-- ALTER TABLE catalogo_global_barras ADD COLUMN IF NOT EXISTS marca VARCHAR(100);
+-- ALTER TABLE catalogo_global_barras ADD COLUMN IF NOT EXISTS presentacion VARCHAR(100);
+
+-- Storage: crear bucket público "productos-fotos" en Supabase Storage
+-- (políticas: lectura pública + insert/update para anon/authenticated según tu RLS).
 
 -- 4. Productos de cada Negocio
 CREATE TABLE IF NOT EXISTS productos (
