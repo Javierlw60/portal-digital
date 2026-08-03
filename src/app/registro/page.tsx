@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
+import { normalizeSlug } from '@/lib/slug';
 
 export default function RegistroPage() {
   const router = useRouter();
@@ -27,8 +28,8 @@ export default function RegistroPage() {
     setMensaje('');
 
     try {
-      const slugLocalidad = localidad.trim().toLowerCase().replace(/\s+/g, '-');
-      const slugNegocio = nombreComercio.trim().toLowerCase().replace(/\s+/g, '-');
+      const slugLocalidad = normalizeSlug(localidad);
+      const slugNegocio = normalizeSlug(nombreComercio);
 
       const { error } = await supabase.from('negocios').insert([
         {
@@ -40,7 +41,7 @@ export default function RegistroPage() {
           pais,
           rubro,
           slug: slugNegocio,
-          tema_id: 1
+          tema_id: 1,
         },
       ]);
 

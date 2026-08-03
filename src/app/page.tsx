@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { normalizeSlug } from '@/lib/slug';
 
 export default function Home() {
   const router = useRouter();
@@ -23,8 +24,7 @@ export default function Home() {
   const handleBuscarLocalidad = (e: React.FormEvent) => {
     e.preventDefault();
     if (!localidadInput.trim()) return;
-    const slug = localidadInput.trim().toLowerCase().replace(/\s+/g, '-');
-    router.push(`/${slug}`);
+    router.push(`/${normalizeSlug(localidadInput)}`);
   };
 
   return (
