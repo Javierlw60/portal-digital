@@ -47,7 +47,7 @@ async function obtenerComerciosPorLocalidad(slugUrl: string): Promise<NegocioLis
   console.log('[Localidad] Búsqueda Supabase', {
     slugUrl,
     labelConEspacios,
-    error: error?.message ?? null,
+    fallaQuery: error?.message ?? null,
     recibidos: data?.length ?? 0,
     localidades: data?.map((n) => n.localidad) ?? [],
   });
@@ -72,7 +72,7 @@ async function obtenerComerciosPorLocalidad(slugUrl: string): Promise<NegocioLis
 
     console.log('[Localidad] Fallback normalizando tildes/slug', {
       slugUrl,
-      error: fallbackError?.message ?? null,
+      fallaQuery: fallbackError?.message ?? null,
       recibidos: fallbackData?.length ?? 0,
       localidades: fallbackData?.map((n) => n.localidad) ?? [],
     });
@@ -174,7 +174,7 @@ export default async function LocalidadPage({ params }: LocalidadPageProps) {
               {comercios.map((negocio) => (
                 <Link
                   key={negocio.id}
-                  href={`/${slugUrl}/${negocio.slug}`}
+                  href={`/${slugUrl}/${normalizeSlug(negocio.slug)}`}
                   className="bg-slate-900 border border-slate-800 hover:border-blue-500/50 rounded-2xl p-4 sm:p-5 transition shadow-lg block"
                 >
                   <span className="text-[10px] sm:text-xs uppercase tracking-wider bg-blue-500/15 text-blue-400 border border-blue-500/20 px-2.5 py-1 rounded-full font-semibold">

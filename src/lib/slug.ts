@@ -9,6 +9,16 @@ export function normalizeSlug(value: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
+/** Comparación flexible (sin tildes, minúsculas, espacios colapsados). */
+export function normalizeComparable(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
 export function slugToLabel(slug: string): string {
   return slug
     .replace(/-/g, ' ')

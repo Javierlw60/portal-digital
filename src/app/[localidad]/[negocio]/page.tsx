@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { compressImageFile } from '@/lib/compressImage';
+import { normalizeSlug } from '@/lib/slug';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 
 const BUCKET_FOTOS = 'productos-fotos';
@@ -22,6 +23,7 @@ interface Producto {
 interface Negocio {
   id: number;
   nombre_comercio: string;
+  slug?: string;
   domicilio: string;
   localidad: string;
   partido: string;
@@ -68,14 +70,54 @@ export default function NegocioPaginaDefinitiva() {
       if (!slugNegocio) return;
       setLoading(true);
 
-      const { data: negocioData, error: negocioError } = await supabase
+      const slugRaw = decodeURIComponent(slugNegocio);
+      const slugNorm = normalizeSlug(slugRaw);
+
+      // Match exacto, luego sin tildes (librería-loly → libreria-loly)
+      let negocioData: Negocio | null = null;
+
+      const intentoExacto = await supabase
         .from('negocios')
         .select('*')
-        .eq('slug', slugNegocio)
-        .single();
+        .eq('slug', slugRaw)
+        .maybeSingle();
 
-      if (negocioError || !negocioData) {
-        console.error('Negocio no encontrado:', negocioError);
+      if (intentoExacto.data) {
+        negocioData = intentoExacto.data;
+      } else {
+        const intentoNorm = await supabase
+          .from('negocios')
+          .select('*')
+          .eq('slug', slugNorm)
+          .maybeSingle();
+
+        if (intentoNorm.data) {
+          negocioData = intentoNorm.data;
+        } else {
+          const { data: candidatos, error: candidatosError } = await supabase
+            .from('negocios')
+            .select('*')
+            .limit(200);
+
+          if (candidatosError) {
+            console.error('Negocio no encontrado:', candidatosError);
+          }
+
+          negocioData =
+            candidatos?.find((n) => normalizeSlug(n.slug || '') === slugNorm) ??
+            null;
+
+          if (!negocioData) {
+            console.error('Negocio no encontrado:', {
+              slugRaw,
+              slugNorm,
+              error: intentoExacto.error || intentoNorm.error,
+            });
+          }
+        }
+      }
+
+      if (!negocioData) {
         setLoading(false);
         return;
       }

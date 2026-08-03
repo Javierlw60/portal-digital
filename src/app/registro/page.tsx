@@ -3,7 +3,10 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { normalizeSlug } from '@/lib/slug';
+import { normalizeComparable, normalizeSlug } from '@/lib/slug';
+
+const MSG_DUPLICADO =
+  'Ya existe un comercio registrado con este nombre en esa dirección.';
 
 export default function RegistroPage() {
   const router = useRouter();
@@ -30,30 +33,87 @@ export default function RegistroPage() {
     try {
       const slugLocalidad = normalizeSlug(localidad);
       const slugNegocio = normalizeSlug(nombreComercio);
+      const nombreNorm = normalizeComparable(nombreComercio);
+      const domicilioNorm = normalizeComparable(domicilio);
+
+      if (!slugLocalidad || !slugNegocio) {
+        setMensaje('Completá un nombre y una localidad válidos.');
+        return;
+      }
+
+      // 1) Antiduplicado por slug normalizado (URL única)
+      const { data: porSlug, error: errorSlug } = await supabase
+        .from('negocios')
+        .select('id, slug, nombre_comercio, domicilio, localidad')
+        .eq('slug', slugNegocio)
+        .maybeSingle();
+
+      if (errorSlug) throw errorSlug;
+
+      if (porSlug) {
+        setMensaje(MSG_DUPLICADO);
+        return;
+      }
+
+      // 2) Antiduplicado por nombre + domicilio en la misma localidad
+      //    (incluye registros viejos con tildes en slug/localidad)
+      const { data: enLocalidad, error: errorLocalidad } = await supabase
+        .from('negocios')
+        .select('id, slug, nombre_comercio, domicilio, localidad')
+        .ilike('localidad', `%${slugLocalidad}%`)
+        .limit(200);
+
+      if (errorLocalidad) throw errorLocalidad;
+
+      const duplicado = (enLocalidad ?? []).some((n) => {
+        const mismaLocalidad =
+          normalizeSlug(n.localidad || '') === slugLocalidad;
+        const mismoNombre =
+          normalizeComparable(n.nombre_comercio || '') === nombreNorm;
+        const mismaDireccion =
+          normalizeComparable(n.domicilio || '') === domicilioNorm;
+        const mismoSlugNorm = normalizeSlug(n.slug || '') === slugNegocio;
+
+        return mismoSlugNorm || (mismaLocalidad && mismoNombre && mismaDireccion);
+      });
+
+      if (duplicado) {
+        setMensaje(MSG_DUPLICADO);
+        return;
+      }
 
       const { error } = await supabase.from('negocios').insert([
         {
-          nombre_comercio: nombreComercio,
-          domicilio,
+          nombre_comercio: nombreComercio.trim(),
+          domicilio: domicilio.trim(),
           localidad: slugLocalidad,
-          partido,
-          provincia,
-          pais,
-          rubro,
+          partido: partido.trim(),
+          provincia: provincia.trim(),
+          pais: pais.trim(),
+          rubro: rubro.trim(),
           slug: slugNegocio,
           tema_id: 1,
         },
       ]);
 
-      if (error) throw error;
+      if (error) {
+        // Unique violation en slug (carrera / constraint de DB)
+        if (error.code === '23505' || /duplicate|unique/i.test(error.message)) {
+          setMensaje(MSG_DUPLICADO);
+          return;
+        }
+        throw error;
+      }
 
       setMensaje(`¡Negocio "${nombreComercio}" registrado con éxito!`);
       setTimeout(() => {
         router.push(`/${slugLocalidad}/${slugNegocio}`);
       }, 1000);
-    } catch (error: any) {
-      console.error('Error al registrar:', error.message);
-      setMensaje('Error al registrar el comercio: ' + error.message);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('Falla al registrar comercio:', message);
+      setMensaje('Error al registrar el comercio: ' + message);
+    } finally {
       setLoading(false);
     }
   };
