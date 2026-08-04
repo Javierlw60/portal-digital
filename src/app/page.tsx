@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { BuscadorProductos } from '@/components/BuscadorProductos';
 import { normalizeSlug } from '@/lib/slug';
 
 export default function Home() {
@@ -45,24 +46,27 @@ export default function Home() {
             Kioscos, almacenes, verdulerías y negocios locales actualizados a diario con ofertas reales.
           </p>
 
-          <form
-            onSubmit={handleBuscarLocalidad}
-            className="bg-slate-800 p-3 rounded-2xl border border-slate-700 w-full max-w-xl mx-auto flex flex-col gap-2 sm:flex-row sm:gap-3 shadow-2xl"
-          >
-            <input
-              type="text"
-              placeholder="Escribí tu localidad (Ej: Garín, Tigre...)"
-              value={localidadInput}
-              onChange={(e) => setLocalidadInput(e.target.value)}
-              className="bg-transparent w-full min-w-0 flex-1 px-3 sm:px-4 py-2.5 sm:py-0 text-sm sm:text-base text-white placeholder-slate-400 focus:outline-none"
-            />
-            <button
-              type="submit"
-              className="w-full sm:w-auto shrink-0 bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-xl text-sm sm:text-base font-semibold transition"
+          <div className="w-full max-w-2xl mx-auto text-left space-y-3">
+            <BuscadorProductos />
+            <form
+              onSubmit={handleBuscarLocalidad}
+              className="bg-slate-800/60 p-3 rounded-2xl border border-slate-700/80 flex flex-col gap-2 sm:flex-row sm:gap-3"
             >
-              Explorar
-            </button>
-          </form>
+              <input
+                type="text"
+                placeholder="O explorá solo por localidad (Ej: Garín...)"
+                value={localidadInput}
+                onChange={(e) => setLocalidadInput(e.target.value)}
+                className="bg-transparent w-full min-w-0 flex-1 px-3 sm:px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none"
+              />
+              <button
+                type="submit"
+                className="w-full sm:w-auto shrink-0 bg-slate-700 hover:bg-slate-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition"
+              >
+                Ver comercios
+              </button>
+            </form>
+          </div>
         </section>
 
         {/* OFERTAS */}

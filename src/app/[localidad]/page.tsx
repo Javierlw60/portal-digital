@@ -1,6 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
+import { BuscadorProductos } from '@/components/BuscadorProductos';
 import { ComercioCard } from '@/components/ComercioCard';
 import { normalizeSlug, slugToLabel } from '@/lib/slug';
 
@@ -125,6 +126,17 @@ export default async function LocalidadPage({ params }: LocalidadPageProps) {
             </Link>
           </div>
         </header>
+
+        <section className="mb-8">
+          <h2 className="text-lg sm:text-xl font-bold mb-3">
+            Buscar productos en {localidadLabel}
+          </h2>
+          <BuscadorProductos
+            localidadFija={slugUrl}
+            localidadLabel={localidadLabel}
+            compact
+          />
+        </section>
 
         <section className="mb-10">
           <h2 className="text-lg sm:text-xl font-bold mb-4">
