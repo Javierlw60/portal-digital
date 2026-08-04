@@ -1,17 +1,24 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { Suspense, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
+import {
+  PasswordField,
+  authInputClassName,
+  authLabelClassName,
+} from '@/components/PasswordField';
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const supabase = createClient();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [mensaje, setMensaje] = useState('');
+  const [mensaje, setMensaje] = useState(() => searchParams.get('mensaje') || '');
+  const verified = searchParams.get('verified') === '1';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,46 +42,52 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="flex-1 flex items-center justify-center p-4">
+    <main className="flex-1 flex items-center justify-center p-4 bg-slate-950 text-white">
       <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl">
-        <h1 className="text-2xl font-bold text-center">Ingresar</h1>
+        <h1 className="text-2xl font-bold text-center text-white">Ingresar</h1>
         <p className="text-sm text-slate-400 text-center mt-2 mb-6">
           Accedé con tu email verificado
         </p>
 
-        {mensaje && (
-          <div className="mb-4 p-3 rounded-xl text-sm text-center bg-red-500/20 text-red-300 border border-red-500/30">
-            {mensaje}
+        {(mensaje || verified) && (
+          <div
+            className={`mb-4 p-3 rounded-xl text-sm text-center border ${
+              verified || mensaje.includes('éxito') || mensaje.includes('verificado')
+                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                : 'bg-red-500/20 text-red-300 border-red-500/30'
+            }`}
+          >
+            {mensaje ||
+              '¡Correo verificado con éxito! Por favor ingresa a tu cuenta.'}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs text-slate-400 mb-1">Email</label>
+            <label htmlFor="login-email" className={authLabelClassName}>
+              Email
+            </label>
             <input
+              id="login-email"
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500"
+              className={authInputClassName}
               placeholder="tu@email.com"
+              autoComplete="email"
             />
           </div>
-          <div>
-            <label className="block text-xs text-slate-400 mb-1">Contraseña</label>
-            <input
-              type="password"
-              required
-              minLength={6}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500"
-            />
-          </div>
+          <PasswordField
+            id="login-password"
+            value={password}
+            onChange={setPassword}
+            labelClassName={authLabelClassName}
+          />
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-500 font-semibold py-3 rounded-xl disabled:opacity-50"
+            className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 rounded-xl disabled:opacity-50"
           >
             {loading ? 'Ingresando…' : 'Ingresar'}
           </button>
@@ -92,5 +105,19 @@ export default function LoginPage() {
         </p>
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex-1 flex items-center justify-center p-4 bg-slate-950">
+          <p className="text-slate-400">Cargando…</p>
+        </main>
+      }
+    >
+      <LoginForm />
+    </Suspense>
   );
 }

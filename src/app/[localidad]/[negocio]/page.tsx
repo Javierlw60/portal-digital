@@ -718,7 +718,7 @@ export default function NegocioPaginaDefinitiva() {
                   placeholder="Escáner o manual..."
                   value={codigoBarras}
                   onChange={(e) => setCodigoBarras(e.target.value)}
-                  className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                  className="w-full bg-slate-800 border border-slate-600 rounded-xl px-4 py-2.5 text-white placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                 />
               </div>
 
@@ -738,7 +738,7 @@ export default function NegocioPaginaDefinitiva() {
                   placeholder="Ej: 1000"
                   value={precioProducto}
                   onChange={(e) => setPrecioProducto(e.target.value)}
-                  className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                  className="w-full bg-slate-800 border border-slate-600 rounded-xl px-4 py-2.5 text-white placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                 />
               </div>
             </div>
@@ -757,7 +757,7 @@ export default function NegocioPaginaDefinitiva() {
                 placeholder="Ej: Palitos Salados"
                 value={nombreProducto}
                 onChange={(e) => setNombreProducto(formatTitleCase(e.target.value))}
-                className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                className="w-full bg-slate-800 border border-slate-600 rounded-xl px-4 py-2.5 text-white placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               />
             </div>
 
@@ -775,7 +775,7 @@ export default function NegocioPaginaDefinitiva() {
                   placeholder='Ej: "Si Diet", "Coca-Cola"'
                   value={marcaProducto}
                   onChange={(e) => setMarcaProducto(formatTitleCase(e.target.value))}
-                  className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                  className="w-full bg-slate-800 border border-slate-600 rounded-xl px-4 py-2.5 text-white placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                 />
               </div>
 
@@ -792,7 +792,7 @@ export default function NegocioPaginaDefinitiva() {
                   placeholder='Ej: "500 ml", "1 L", "Caja x 12"'
                   value={presentacionProducto}
                   onChange={(e) => setPresentacionProducto(e.target.value)}
-                  className="w-full bg-slate-800/80 border border-slate-700 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                  className="w-full bg-slate-800 border border-slate-600 rounded-xl px-4 py-2.5 text-white placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                 />
               </div>
             </div>

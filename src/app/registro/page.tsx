@@ -7,6 +7,11 @@ import { createClient } from '@/lib/supabase';
 import { useAuth } from '@/components/AuthProvider';
 import { normalizeComparable, normalizeSlug } from '@/lib/slug';
 import {
+  PasswordField,
+  authInputClassName,
+  authLabelClassName,
+} from '@/components/PasswordField';
+import {
   clearPendingNegocio,
   readPendingNegocio,
   savePendingNegocio,
@@ -166,7 +171,7 @@ export default function RegistroPage() {
           password,
           options: {
             data: { role: 'comercio' },
-            emailRedirectTo: `${origin}/auth/callback?next=/registro`,
+            emailRedirectTo: `${origin}/auth/callback?next=/cuenta`,
           },
         });
 
@@ -210,13 +215,13 @@ export default function RegistroPage() {
   };
 
   return (
-    <main className="flex-1 flex items-center justify-center p-4">
-      <div className="w-full max-w-lg bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl">
+    <main className="flex-1 flex items-center justify-center p-4 bg-slate-950 text-white">
+      <div className="w-full max-w-lg bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl text-white">
         <div className="text-center mb-6">
           <span className="text-xs uppercase tracking-widest bg-blue-600/30 text-blue-400 py-1 px-3 rounded-full font-semibold">
             Unite a la Red
           </span>
-          <h1 className="text-2xl sm:text-3xl font-bold mt-3">Sumá tu Negocio al Portal</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold mt-3 text-white">Sumá tu Negocio al Portal</h1>
           <p className="text-sm text-slate-400 mt-2">
             Creá tu cuenta con email. Te enviamos un enlace de confirmación.
           </p>
@@ -238,65 +243,63 @@ export default function RegistroPage() {
           {!user && (
             <div className="grid grid-cols-1 gap-4 p-4 rounded-2xl bg-slate-950/50 border border-slate-800">
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">
+                <label htmlFor="comercio-email" className={authLabelClassName}>
                   Email de acceso
                 </label>
                 <input
+                  id="comercio-email"
                   type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="comercio@email.com"
-                  className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500"
+                  className={authInputClassName}
+                  autoComplete="email"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">
-                  Contraseña
-                </label>
-                <input
-                  type="password"
-                  required
-                  minLength={6}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500"
-                />
-              </div>
+              <PasswordField
+                id="comercio-password"
+                value={password}
+                onChange={setPassword}
+                labelClassName={authLabelClassName}
+                autoComplete="new-password"
+              />
             </div>
           )}
 
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">
+            <label htmlFor="nombre-comercio" className={authLabelClassName}>
               Nombre del Comercio
             </label>
             <input
+              id="nombre-comercio"
               type="text"
               required
               value={nombreComercio}
               onChange={(e) => setNombreComercio(formatTitleCase(e.target.value))}
               placeholder="Ej: Kiosco Don Pedro"
-              className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500"
+              className={authInputClassName}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">
+            <label htmlFor="domicilio-comercio" className={authLabelClassName}>
               Domicilio (Calle y Número)
             </label>
             <input
+              id="domicilio-comercio"
               type="text"
               required
               value={domicilio}
               onChange={(e) => setDomicilio(formatTitleCase(e.target.value))}
               placeholder="Ej: Av. Principal 123"
-              className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500"
+              className={authInputClassName}
             />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1">
+              <label className={authLabelClassName}>
                 Localidad / Ciudad
               </label>
               <input
@@ -305,11 +308,11 @@ export default function RegistroPage() {
                 value={localidad}
                 onChange={(e) => setLocalidad(formatTitleCase(e.target.value))}
                 placeholder="Ej: Garín"
-                className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500"
+                className={authInputClassName}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1">
+              <label className={authLabelClassName}>
                 Partido / Departamento
               </label>
               <input
@@ -318,14 +321,14 @@ export default function RegistroPage() {
                 value={partido}
                 onChange={(e) => setPartido(formatTitleCase(e.target.value))}
                 placeholder="Ej: Escobar"
-                className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500"
+                className={authInputClassName}
               />
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1">
+              <label className={authLabelClassName}>
                 Provincia
               </label>
               <input
@@ -333,23 +336,23 @@ export default function RegistroPage() {
                 required
                 value={provincia}
                 onChange={(e) => setProvincia(formatTitleCase(e.target.value))}
-                className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500"
+                className={authInputClassName}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1">País</label>
+              <label className={authLabelClassName}>País</label>
               <input
                 type="text"
                 required
                 value={pais}
                 onChange={(e) => setPais(formatTitleCase(e.target.value))}
-                className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500"
+                className={authInputClassName}
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">
+            <label className={authLabelClassName}>
               Rubro Principal
             </label>
             <input
@@ -359,7 +362,7 @@ export default function RegistroPage() {
               value={rubro}
               onChange={(e) => setRubro(formatTitleCase(e.target.value))}
               placeholder="Elegí o escribí tu rubro..."
-              className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500"
+              className={authInputClassName}
             />
             <datalist id="rubros-sugerencias">
               <option value="Kiosco / Almacén" />

@@ -7,6 +7,10 @@ import { createClient } from '@/lib/supabase';
 import { useAuth } from '@/components/AuthProvider';
 import { normalizeSlug } from '@/lib/slug';
 import { isAdminProfile } from '@/lib/auth';
+import {
+  clearPendingNegocio,
+  readPendingNegocio,
+} from '@/lib/pending-negocio';
 
 interface FavoritoRow {
   id: number;
@@ -22,9 +26,65 @@ interface FavoritoRow {
 
 export default function CuentaPage() {
   const router = useRouter();
-  const { user, profile, loading } = useAuth();
+  const { user, profile, loading, refreshProfile } = useAuth();
   const [favoritos, setFavoritos] = useState<FavoritoRow[]>([]);
   const [cargandoFav, setCargandoFav] = useState(true);
+
+  // Completar registro de comercio pendiente tras confirmar email
+  useEffect(() => {
+    if (loading || !user) return;
+    const pending = readPendingNegocio();
+    if (!pending) return;
+    if (profile?.negocio_id) {
+      clearPendingNegocio();
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      const supabase = createClient();
+      try {
+        const { data: inserted, error } = await supabase
+          .from('negocios')
+          .insert([
+            {
+              nombre_comercio: pending.nombre_comercio,
+              domicilio: pending.domicilio,
+              localidad: pending.slugLocalidad,
+              partido: pending.partido,
+              provincia: pending.provincia,
+              pais: pending.pais,
+              rubro: pending.rubro,
+              slug: pending.slug,
+              owner_id: user.id,
+              tema_id: 1,
+            },
+          ])
+          .select('id')
+          .single();
+
+        if (error) throw error;
+
+        await supabase
+          .from('profiles')
+          .update({ role: 'comercio', negocio_id: inserted.id })
+          .eq('id', user.id);
+
+        clearPendingNegocio();
+        await refreshProfile();
+        if (!cancelled) {
+          router.replace(`/${pending.slugLocalidad}/${pending.slug}`);
+        }
+      } catch (err) {
+        console.warn('Pendiente comercio:', err);
+        clearPendingNegocio();
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, loading, profile?.negocio_id, refreshProfile, router]);
 
   useEffect(() => {
     if (loading) return;
