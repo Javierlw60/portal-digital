@@ -26,7 +26,7 @@ export async function unlockScanBeep(): Promise<void> {
   }
 }
 
-/** Beep agudo ~900Hz, ~0.1s. */
+/** Beep agudo tipo caja (~1400Hz, triangle, volumen máximo). */
 export function playScanBeep(): void {
   const ctx = getAudioContext();
   if (!ctx) return;
@@ -36,12 +36,13 @@ export function playScanBeep(): void {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
 
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(900, now);
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(1400, now);
 
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.25, now + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.1);
+    // Volumen al máximo al inicio; caída rápida al final para evitar clic
+    gain.gain.setValueAtTime(1.0, now);
+    gain.gain.setValueAtTime(1.0, now + 0.08);
+    gain.gain.linearRampToValueAtTime(0.0001, now + 0.11);
 
     osc.connect(gain);
     gain.connect(ctx.destination);
