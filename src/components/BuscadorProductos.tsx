@@ -1,12 +1,15 @@
 'use client';
 
-import React, { useState, useTransition } from 'react';
+import React, { useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase';
 import { normalizeSlug } from '@/lib/slug';
 import {
   buscarProductos,
+  idMejorPrecio,
+  ordenarProductos,
   type ComercioSugerido,
+  type OrdenProductos,
   type ProductoBusqueda,
 } from '@/lib/searchProductos';
 
@@ -26,9 +29,20 @@ export function BuscadorProductos({
   const [localidad, setLocalidad] = useState(localidadLabel || localidadFija || '');
   const [productos, setProductos] = useState<ProductoBusqueda[]>([]);
   const [sugerencias, setSugerencias] = useState<ComercioSugerido[]>([]);
+  const [orden, setOrden] = useState<OrdenProductos>('menor_precio');
   const [buscado, setBuscado] = useState(false);
   const [pending, startTransition] = useTransition();
   const [mensaje, setMensaje] = useState('');
+
+  const productosOrdenados = useMemo(
+    () => ordenarProductos(productos, orden),
+    [productos, orden]
+  );
+
+  const mejorPrecioId = useMemo(
+    () => idMejorPrecio(productos),
+    [productos]
+  );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,6 +53,7 @@ export function BuscadorProductos({
     }
     setMensaje('');
     setBuscado(true);
+    setOrden('menor_precio');
 
     startTransition(async () => {
       const supabase = createClient();
@@ -100,12 +115,31 @@ export function BuscadorProductos({
         <div className="space-y-4">
           {productos.length > 0 ? (
             <>
-              <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
-                Resultados ({productos.length})
-              </h3>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
+                  Resultados ({productos.length}) — priorizamos tu ahorro
+                </h3>
+                <label className="flex items-center gap-2 text-xs sm:text-sm text-slate-400">
+                  <span className="whitespace-nowrap">Ordenar por</span>
+                  <select
+                    value={orden}
+                    onChange={(e) => setOrden(e.target.value as OrdenProductos)}
+                    className="bg-slate-900 border border-slate-700 text-white rounded-xl px-3 py-2 text-xs sm:text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value="menor_precio">Menor precio (predeterminado)</option>
+                    <option value="mayor_precio">Mayor precio</option>
+                    <option value="comercio">Nombre del comercio</option>
+                  </select>
+                </label>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                {productos.map((p) => (
-                  <ProductoResultadoCard key={p.id} producto={p} />
+                {productosOrdenados.map((p) => (
+                  <ProductoResultadoCard
+                    key={p.id}
+                    producto={p}
+                    esMejorPrecio={p.id === mejorPrecioId}
+                  />
                 ))}
               </div>
             </>
@@ -154,12 +188,24 @@ export function BuscadorProductos({
   );
 }
 
-function ProductoResultadoCard({ producto }: { producto: ProductoBusqueda }) {
+function ProductoResultadoCard({
+  producto,
+  esMejorPrecio,
+}: {
+  producto: ProductoBusqueda;
+  esMejorPrecio: boolean;
+}) {
   const n = producto.negocio;
   const href = `/${normalizeSlug(n.localidad || 'local')}/${normalizeSlug(n.slug)}`;
 
   return (
-    <article className="bg-slate-900 border border-slate-800 rounded-2xl p-3 sm:p-4 flex gap-3 shadow-lg">
+    <article
+      className={`bg-slate-900 rounded-2xl p-3 sm:p-4 flex gap-3 shadow-lg border ${
+        esMejorPrecio
+          ? 'border-emerald-500/50 ring-1 ring-emerald-500/30'
+          : 'border-slate-800'
+      }`}
+    >
       <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-slate-800 border border-slate-700 overflow-hidden shrink-0 flex items-center justify-center">
         {producto.foto_url ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -174,6 +220,12 @@ function ProductoResultadoCard({ producto }: { producto: ProductoBusqueda }) {
       </div>
 
       <div className="min-w-0 flex-1 flex flex-col">
+        {esMejorPrecio && (
+          <span className="self-start mb-1.5 text-[10px] sm:text-xs font-bold uppercase tracking-wide bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-full">
+            Mejor Precio
+          </span>
+        )}
+
         <div className="flex justify-between gap-2 items-start">
           <div className="min-w-0">
             <h4 className="font-bold text-white break-words leading-snug">
@@ -185,7 +237,11 @@ function ProductoResultadoCard({ producto }: { producto: ProductoBusqueda }) {
               </p>
             )}
           </div>
-          <span className="text-emerald-400 font-bold text-lg shrink-0">
+          <span
+            className={`font-bold text-lg shrink-0 ${
+              esMejorPrecio ? 'text-emerald-300' : 'text-emerald-400'
+            }`}
+          >
             ${producto.precio}
           </span>
         </div>

@@ -160,7 +160,8 @@ export async function buscarProductos(
     );
   }
 
-  productos = productos.slice(0, limit);
+  // Regla de negocio: siempre devolver ordenados por menor precio primero
+  productos = ordenarProductos(productos, 'menor_precio').slice(0, limit);
 
   let sugerencias: ComercioSugerido[] = [];
 
@@ -204,4 +205,37 @@ export async function buscarProductos(
   }
 
   return { productos, sugerencias };
+}
+
+export type OrdenProductos = 'menor_precio' | 'mayor_precio' | 'comercio';
+
+/** Ordena resultados en cliente (ahorro del usuario = menor_precio por defecto). */
+export function ordenarProductos(
+  productos: ProductoBusqueda[],
+  orden: OrdenProductos
+): ProductoBusqueda[] {
+  const copy = [...productos];
+  switch (orden) {
+    case 'mayor_precio':
+      return copy.sort((a, b) => b.precio - a.precio);
+    case 'comercio':
+      return copy.sort((a, b) =>
+        a.negocio.nombre_comercio.localeCompare(b.negocio.nombre_comercio, 'es', {
+          sensitivity: 'base',
+        })
+      );
+    case 'menor_precio':
+    default:
+      return copy.sort((a, b) => a.precio - b.precio);
+  }
+}
+
+/** Id del producto con el precio más bajo (empate: el primero en la lista). */
+export function idMejorPrecio(productos: ProductoBusqueda[]): number | null {
+  if (productos.length === 0) return null;
+  let best = productos[0];
+  for (const p of productos) {
+    if (p.precio < best.precio) best = p;
+  }
+  return best.id;
 }
