@@ -1,15 +1,28 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
+import { createClient } from '@/lib/supabase';
+import { useAuth } from '@/components/AuthProvider';
 import { normalizeComparable, normalizeSlug } from '@/lib/slug';
+import {
+  clearPendingNegocio,
+  readPendingNegocio,
+  savePendingNegocio,
+  type PendingNegocio,
+} from '@/lib/pending-negocio';
 
 const MSG_DUPLICADO =
   'Ya existe un comercio registrado con este nombre en esa dirección.';
 
 export default function RegistroPage() {
   const router = useRouter();
+  const { user, profile, refreshProfile } = useAuth();
+  const supabase = createClient();
+
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [nombreComercio, setNombreComercio] = useState('');
   const [domicilio, setDomicilio] = useState('');
   const [localidad, setLocalidad] = useState('');
@@ -20,10 +33,61 @@ export default function RegistroPage() {
   const [loading, setLoading] = useState(false);
   const [mensaje, setMensaje] = useState('');
 
-  // Función para capitalizar la primera letra de cada palabra automáticamente
-  const formatTitleCase = (value: string) => {
-    return value.replace(/\b\w/g, (char) => char.toUpperCase());
+  const formatTitleCase = (value: string) =>
+    value.replace(/\b\w/g, (char) => char.toUpperCase());
+
+  const completarNegocioPendiente = async (pending: PendingNegocio, userId: string) => {
+    const { data: inserted, error } = await supabase
+      .from('negocios')
+      .insert([
+        {
+          nombre_comercio: pending.nombre_comercio,
+          domicilio: pending.domicilio,
+          localidad: pending.slugLocalidad,
+          partido: pending.partido,
+          provincia: pending.provincia,
+          pais: pending.pais,
+          rubro: pending.rubro,
+          slug: pending.slug,
+          owner_id: userId,
+          tema_id: 1,
+        },
+      ])
+      .select('id')
+      .single();
+
+    if (error) throw error;
+
+    await supabase
+      .from('profiles')
+      .update({ role: 'comercio', negocio_id: inserted.id })
+      .eq('id', userId);
+
+    clearPendingNegocio();
+    await refreshProfile();
+    return pending;
   };
+
+  useEffect(() => {
+    async function resumePending() {
+      if (!user) return;
+      const pending = readPendingNegocio();
+      if (!pending) return;
+      setLoading(true);
+      try {
+        const done = await completarNegocioPendiente(pending, user.id);
+        setMensaje(`¡Negocio "${done.nombre_comercio}" registrado con éxito!`);
+        router.push(`/${done.slugLocalidad}/${done.slug}`);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        setMensaje('No se pudo completar el registro del comercio: ' + message);
+      } finally {
+        setLoading(false);
+      }
+    }
+    resumePending();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,7 +105,6 @@ export default function RegistroPage() {
         return;
       }
 
-      // 1) Antiduplicado por slug normalizado (URL única)
       const { data: porSlug, error: errorSlug } = await supabase
         .from('negocios')
         .select('id, slug, nombre_comercio, domicilio, localidad')
@@ -49,14 +112,11 @@ export default function RegistroPage() {
         .maybeSingle();
 
       if (errorSlug) throw errorSlug;
-
       if (porSlug) {
         setMensaje(MSG_DUPLICADO);
         return;
       }
 
-      // 2) Antiduplicado por nombre + domicilio en la misma localidad
-      //    (incluye registros viejos con tildes en slug/localidad)
       const { data: enLocalidad, error: errorLocalidad } = await supabase
         .from('negocios')
         .select('id, slug, nombre_comercio, domicilio, localidad')
@@ -66,14 +126,12 @@ export default function RegistroPage() {
       if (errorLocalidad) throw errorLocalidad;
 
       const duplicado = (enLocalidad ?? []).some((n) => {
-        const mismaLocalidad =
-          normalizeSlug(n.localidad || '') === slugLocalidad;
+        const mismaLocalidad = normalizeSlug(n.localidad || '') === slugLocalidad;
         const mismoNombre =
           normalizeComparable(n.nombre_comercio || '') === nombreNorm;
         const mismaDireccion =
           normalizeComparable(n.domicilio || '') === domicilioNorm;
         const mismoSlugNorm = normalizeSlug(n.slug || '') === slugNegocio;
-
         return mismoSlugNorm || (mismaLocalidad && mismoNombre && mismaDireccion);
       });
 
@@ -82,118 +140,200 @@ export default function RegistroPage() {
         return;
       }
 
-      const { error } = await supabase.from('negocios').insert([
-        {
-          nombre_comercio: nombreComercio.trim(),
-          domicilio: domicilio.trim(),
-          localidad: slugLocalidad,
-          partido: partido.trim(),
-          provincia: provincia.trim(),
-          pais: pais.trim(),
-          rubro: rubro.trim(),
-          slug: slugNegocio,
-          tema_id: 1,
-        },
-      ]);
+      const pending: PendingNegocio = {
+        nombre_comercio: nombreComercio.trim(),
+        domicilio: domicilio.trim(),
+        localidad: localidad.trim(),
+        partido: partido.trim(),
+        provincia: provincia.trim(),
+        pais: pais.trim(),
+        rubro: rubro.trim(),
+        slug: slugNegocio,
+        slugLocalidad,
+      };
 
-      if (error) {
-        // Unique violation en slug (carrera / constraint de DB)
-        if (error.code === '23505' || /duplicate|unique/i.test(error.message)) {
-          setMensaje(MSG_DUPLICADO);
+      let userId = user?.id;
+
+      if (!userId) {
+        if (!email.trim() || password.length < 6) {
+          setMensaje('Completá email y contraseña (mínimo 6 caracteres).');
           return;
         }
-        throw error;
+
+        const origin = window.location.origin;
+        const { data: signData, error: signError } = await supabase.auth.signUp({
+          email: email.trim(),
+          password,
+          options: {
+            data: { role: 'comercio' },
+            emailRedirectTo: `${origin}/auth/callback?next=/registro`,
+          },
+        });
+
+        if (signError) throw signError;
+
+        if (!signData.session) {
+          savePendingNegocio(pending);
+          router.push(`/verificar-email?email=${encodeURIComponent(email.trim())}`);
+          return;
+        }
+
+        userId = signData.user?.id;
       }
 
-      setMensaje(`¡Negocio "${nombreComercio}" registrado con éxito!`);
+      if (!userId) {
+        setMensaje('No se pudo obtener la sesión. Confirmá tu email e ingresá.');
+        return;
+      }
+
+      // Si ya tenía negocio, no duplicar
+      if (profile?.negocio_id) {
+        setMensaje('Ya tenés un comercio asociado a tu cuenta.');
+        return;
+      }
+
+      const done = await completarNegocioPendiente(pending, userId);
+      setMensaje(`¡Negocio "${done.nombre_comercio}" registrado con éxito!`);
       setTimeout(() => {
-        router.push(`/${slugLocalidad}/${slugNegocio}`);
-      }, 1000);
+        router.push(`/${done.slugLocalidad}/${done.slug}`);
+      }, 800);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      console.warn('Falla al registrar comercio:', message);
-      setMensaje('Error al registrar el comercio: ' + message);
+      if (/duplicate|unique|23505/i.test(message)) {
+        setMensaje(MSG_DUPLICADO);
+      } else {
+        setMensaje('Error al registrar el comercio: ' + message);
+      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-slate-950 p-4">
-      <div className="w-full max-w-lg bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-3xl p-8 shadow-2xl text-white">
+    <main className="flex-1 flex items-center justify-center p-4">
+      <div className="w-full max-w-lg bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl">
         <div className="text-center mb-6">
           <span className="text-xs uppercase tracking-widest bg-blue-600/30 text-blue-400 py-1 px-3 rounded-full font-semibold">
             Unite a la Red
           </span>
-          <h1 className="text-3xl font-bold mt-3">Sumá tu Negocio al Portal</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold mt-3">Sumá tu Negocio al Portal</h1>
+          <p className="text-sm text-slate-400 mt-2">
+            Creá tu cuenta con email. Te enviamos un enlace de confirmación.
+          </p>
         </div>
 
         {mensaje && (
-          <div className={`p-3 mb-4 rounded-xl text-sm text-center ${mensaje.includes('éxito') ? 'bg-green-500/20 text-green-300 border border-green-500/30' : 'bg-red-500/20 text-red-300 border border-red-500/30'}`}>
+          <div
+            className={`p-3 mb-4 rounded-xl text-sm text-center ${
+              mensaje.includes('éxito')
+                ? 'bg-green-500/20 text-green-300 border border-green-500/30'
+                : 'bg-red-500/20 text-red-300 border border-red-500/30'
+            }`}
+          >
             {mensaje}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {!user && (
+            <div className="grid grid-cols-1 gap-4 p-4 rounded-2xl bg-slate-950/50 border border-slate-800">
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">
+                  Email de acceso
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="comercio@email.com"
+                  className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">
+                  Contraseña
+                </label>
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+          )}
+
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">Nombre del Comercio</label>
+            <label className="block text-sm font-medium text-slate-300 mb-1">
+              Nombre del Comercio
+            </label>
             <input
               type="text"
               required
               value={nombreComercio}
               onChange={(e) => setNombreComercio(formatTitleCase(e.target.value))}
               placeholder="Ej: Kiosco Don Pedro"
-              className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition"
+              className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">Domicilio (Calle y Número)</label>
+            <label className="block text-sm font-medium text-slate-300 mb-1">
+              Domicilio (Calle y Número)
+            </label>
             <input
               type="text"
               required
               value={domicilio}
               onChange={(e) => setDomicilio(formatTitleCase(e.target.value))}
               placeholder="Ej: Av. Principal 123"
-              className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition"
+              className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500"
             />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1">Localidad / Ciudad</label>
+              <label className="block text-sm font-medium text-slate-300 mb-1">
+                Localidad / Ciudad
+              </label>
               <input
                 type="text"
                 required
                 value={localidad}
                 onChange={(e) => setLocalidad(formatTitleCase(e.target.value))}
                 placeholder="Ej: Garín"
-                className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition"
+                className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1">Partido / Departamento</label>
+              <label className="block text-sm font-medium text-slate-300 mb-1">
+                Partido / Departamento
+              </label>
               <input
                 type="text"
                 required
                 value={partido}
                 onChange={(e) => setPartido(formatTitleCase(e.target.value))}
                 placeholder="Ej: Escobar"
-                className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition"
+                className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1">Provincia</label>
+              <label className="block text-sm font-medium text-slate-300 mb-1">
+                Provincia
+              </label>
               <input
                 type="text"
                 required
                 value={provincia}
                 onChange={(e) => setProvincia(formatTitleCase(e.target.value))}
-                placeholder="Ej: Buenos Aires"
-                className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition"
+                className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500"
               />
             </div>
             <div>
@@ -203,14 +343,15 @@ export default function RegistroPage() {
                 required
                 value={pais}
                 onChange={(e) => setPais(formatTitleCase(e.target.value))}
-                placeholder="Ej: Argentina"
-                className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition"
+                className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1">Rubro Principal</label>
+            <label className="block text-sm font-medium text-slate-300 mb-1">
+              Rubro Principal
+            </label>
             <input
               type="text"
               required
@@ -218,7 +359,7 @@ export default function RegistroPage() {
               value={rubro}
               onChange={(e) => setRubro(formatTitleCase(e.target.value))}
               placeholder="Elegí o escribí tu rubro..."
-              className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition"
+              className="w-full bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500"
             />
             <datalist id="rubros-sugerencias">
               <option value="Kiosco / Almacén" />
@@ -226,16 +367,6 @@ export default function RegistroPage() {
               <option value="Carnicería / Granja" />
               <option value="Librería / Varios" />
               <option value="Farmacia" />
-              <option value="Perfumería" />
-              <option value="Cafetería" />
-              <option value="Panchería" />
-              <option value="Artículos de Limpieza" />
-              <option value="Papelera" />
-              <option value="Ferretería" />
-              <option value="Pet Shop" />
-              <option value="Heladería" />
-              <option value="Panadería" />
-              <option value="Indumentaria / Calzado" />
               <option value="Gastronomía / Restaurante" />
             </datalist>
           </div>
@@ -243,11 +374,18 @@ export default function RegistroPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3.5 rounded-xl transition shadow-lg shadow-blue-600/30 mt-6 disabled:opacity-50"
+            className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3.5 rounded-xl transition shadow-lg shadow-blue-600/30 mt-2 disabled:opacity-50"
           >
             {loading ? 'Registrando...' : 'Registrar mi Comercio'}
           </button>
         </form>
+
+        <p className="text-sm text-slate-400 text-center mt-5">
+          ¿Ya tenés cuenta?{' '}
+          <Link href="/login" className="text-blue-400 hover:underline">
+            Ingresar
+          </Link>
+        </p>
       </div>
     </main>
   );

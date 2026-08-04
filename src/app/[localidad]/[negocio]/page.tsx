@@ -3,10 +3,13 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase';
+import { createClient } from '@/lib/supabase';
 import { compressImageFile } from '@/lib/compressImage';
 import { normalizeSlug } from '@/lib/slug';
+import { useAuth } from '@/components/AuthProvider';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
+
+const supabase = createClient();
 
 const BUCKET_FOTOS = 'productos-fotos';
 
@@ -34,6 +37,7 @@ interface Negocio {
 
 export default function NegocioPaginaDefinitiva() {
   const params = useParams();
+  const { canManageNegocio, loading: authLoading } = useAuth();
 
   const slugNegocio = params?.negocio as string;
 
@@ -601,7 +605,7 @@ export default function NegocioPaginaDefinitiva() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
+      <div className="flex-1 bg-slate-950 text-white flex items-center justify-center">
         <p className="animate-pulse text-lg font-medium">Cargando portal...</p>
       </div>
     );
@@ -609,37 +613,19 @@ export default function NegocioPaginaDefinitiva() {
 
   if (!negocio) {
     return (
-      <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-6 text-center">
+      <div className="flex-1 bg-slate-950 text-white flex flex-col items-center justify-center p-6 text-center">
         <h1 className="text-2xl font-bold mb-4">Comercio no encontrado</h1>
-        <Link href="/registro" className="bg-blue-600 px-6 py-2.5 rounded-xl font-semibold">
-          Registrar un nuevo comercio
+        <Link href="/" className="bg-blue-600 px-6 py-2.5 rounded-xl font-semibold">
+          Volver al inicio
         </Link>
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-slate-950 text-white flex flex-col font-sans">
-      {/* NAVBAR */}
-      <header className="border-b border-slate-800 bg-slate-900/90 backdrop-blur-md sticky top-0 z-50 px-4 py-3">
-        <div className="max-w-5xl mx-auto flex justify-between items-center">
-          <Link href="/" className="font-extrabold text-xl tracking-tight text-blue-400 flex items-center gap-2">
-            <span>🌐</span> Portal Digital
-          </Link>
-          <nav className="flex items-center gap-3 text-sm">
-            <Link href="/" className="text-slate-300 hover:text-white px-3 py-1.5 rounded-lg transition">
-              Inicio
-            </Link>
-            <Link
-              href="/registro"
-              className="bg-blue-600 hover:bg-blue-500 text-white font-medium px-4 py-1.5 rounded-xl transition shadow-md shadow-blue-600/20"
-            >
-              + Sumar Comercio
-            </Link>
-          </nav>
-        </div>
-      </header>
+  const puedeGestionar = !authLoading && canManageNegocio(negocio.id);
 
+  return (
+    <div className="flex-1 bg-slate-950 text-white flex flex-col font-sans">
       {/* CONTENIDO PRINCIPAL */}
       <main className="flex-1 max-w-5xl w-full mx-auto p-4 md:p-8 space-y-6">
         {/* TARJETA DEL COMERCIO */}
@@ -650,15 +636,16 @@ export default function NegocioPaginaDefinitiva() {
             </span>
             <h1 className="text-3xl md:text-4xl font-black mt-3">{formatTitleCase(negocio.nombre_comercio)}</h1>
             <p className="text-slate-400 text-sm mt-1 flex items-center gap-1">
-              📍 {formatTitleCase(negocio.domicilio)}, {formatTitleCase(negocio.localidad)}, {formatTitleCase(negocio.partido)}, {formatTitleCase(negocio.provincia)}, {formatTitleCase(negocio.pais)}
+              {formatTitleCase(negocio.domicilio)}, {formatTitleCase(negocio.localidad)}, {formatTitleCase(negocio.partido)}, {formatTitleCase(negocio.provincia)}, {formatTitleCase(negocio.pais)}
             </p>
           </div>
           <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-4 py-2 rounded-xl text-xs font-bold tracking-wide">
-            ● Suscripción Activa
+            Catalogo publico
           </span>
         </section>
 
-        {/* CARGA RÁPIDA DE PRODUCTOS */}
+        {/* CARGA RÁPIDA — solo dueño / admin */}
+        {puedeGestionar && (
         <section className="bg-slate-900 border border-slate-800 p-4 sm:p-6 rounded-3xl shadow-2xl space-y-4">
           <div className="flex justify-between items-center flex-wrap gap-2">
             <div>
@@ -870,10 +857,11 @@ export default function NegocioPaginaDefinitiva() {
             </button>
           </form>
         </section>
+        )}
 
         {/* CATÁLOGO ACTUALIZADO */}
         <section className="bg-slate-900 border border-slate-800 p-4 sm:p-6 rounded-3xl shadow-2xl space-y-4">
-          <h2 className="text-lg font-bold">Catálogo Actualizado ({productos.length})</h2>
+          <h2 className="text-lg font-bold">Catálogo ({productos.length})</h2>
 
           {productos.length === 0 ? (
             <p className="text-sm text-slate-500 text-center py-6">
@@ -917,15 +905,17 @@ export default function NegocioPaginaDefinitiva() {
                     <span className="text-emerald-400 font-bold text-lg">
                       ${prod.precio}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => handleEditarProducto(prod)}
-                      className="text-xs font-bold text-slate-300 hover:text-white bg-slate-900/80 border border-slate-700 px-2.5 py-1.5 rounded-lg transition"
-                      title="Editar producto"
-                      aria-label={`Editar ${prod.nombre_articulo}`}
-                    >
-                      Editar
-                    </button>
+                    {puedeGestionar && (
+                      <button
+                        type="button"
+                        onClick={() => handleEditarProducto(prod)}
+                        className="text-xs font-bold text-slate-300 hover:text-white bg-slate-900/80 border border-slate-700 px-2.5 py-1.5 rounded-lg transition"
+                        title="Editar producto"
+                        aria-label={`Editar ${prod.nombre_articulo}`}
+                      >
+                        Editar
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}

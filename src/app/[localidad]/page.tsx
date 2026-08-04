@@ -1,6 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
-import { supabase } from '@/lib/supabase';
+import { createClient } from '@/lib/supabase/server';
+import { ComercioCard } from '@/components/ComercioCard';
 import { normalizeSlug, slugToLabel } from '@/lib/slug';
 
 interface NegocioListado {
@@ -31,9 +32,9 @@ function coincideLocalidad(valorDb: string | null | undefined, slugUrl: string):
 }
 
 async function obtenerComerciosPorLocalidad(slugUrl: string): Promise<NegocioListado[]> {
+  const supabase = await createClient();
   const labelConEspacios = slugUrl.replace(/-/g, ' ');
 
-  // Búsqueda flexible case-insensitive (sin filtrar por activo/estado)
   const { data, error } = await supabase
     .from('negocios')
     .select(
@@ -53,14 +54,13 @@ async function obtenerComerciosPorLocalidad(slugUrl: string): Promise<NegocioLis
   });
 
   if (error) {
-    console.error('[Localidad] Error al consultar negocios:', error);
+    console.warn('[Localidad] Falla al consultar negocios:', error.message);
   }
 
   let resultados = (data ?? []).filter((n) =>
     coincideLocalidad(n.localidad, slugUrl)
   );
 
-  // Fallback: ilike no ignora tildes (garin ≠ garín). Traemos un lote y filtramos normalizando.
   if (resultados.length === 0) {
     const { data: fallbackData, error: fallbackError } = await supabase
       .from('negocios')
@@ -172,26 +172,17 @@ export default async function LocalidadPage({ params }: LocalidadPageProps) {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {comercios.map((negocio) => (
-                <Link
+                <ComercioCard
                   key={negocio.id}
-                  href={`/${slugUrl}/${normalizeSlug(negocio.slug)}`}
-                  className="bg-slate-900 border border-slate-800 hover:border-blue-500/50 rounded-2xl p-4 sm:p-5 transition shadow-lg block"
-                >
-                  <span className="text-[10px] sm:text-xs uppercase tracking-wider bg-blue-500/15 text-blue-400 border border-blue-500/20 px-2.5 py-1 rounded-full font-semibold">
-                    {negocio.rubro || 'Comercio'}
-                  </span>
-                  <h3 className="text-lg sm:text-xl font-bold mt-3 break-words">
-                    {negocio.nombre_comercio}
-                  </h3>
-                  <p className="text-sm text-slate-400 mt-1 break-words">
-                    {[negocio.domicilio, negocio.localidad, negocio.partido]
-                      .filter(Boolean)
-                      .join(', ')}
-                  </p>
-                  <span className="inline-block mt-3 text-xs font-semibold text-blue-400">
-                    Ver catálogo →
-                  </span>
-                </Link>
+                  id={negocio.id}
+                  nombre_comercio={negocio.nombre_comercio}
+                  slug={negocio.slug}
+                  rubro={negocio.rubro}
+                  domicilio={negocio.domicilio}
+                  localidad={negocio.localidad}
+                  partido={negocio.partido}
+                  slugUrl={slugUrl}
+                />
               ))}
             </div>
           )}

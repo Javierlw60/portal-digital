@@ -28,26 +28,8 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen w-full overflow-x-hidden bg-slate-900 text-white flex flex-col justify-between">
+    <main className="flex-1 w-full overflow-x-hidden bg-slate-900 text-white flex flex-col justify-between">
       <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 md:px-8 overflow-x-hidden flex flex-col flex-1">
-        {/* HEADER */}
-        <header className="w-full flex justify-between items-center gap-3 py-4 sm:py-6">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="bg-blue-500 text-white font-black text-sm sm:text-xl px-2.5 py-1 sm:px-3 rounded-xl shrink-0">
-              PD
-            </span>
-            <span className="text-base sm:text-xl font-bold tracking-tight truncate">
-              Portal Digital
-            </span>
-          </div>
-          <a
-            href="/registro"
-            className="shrink-0 bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-2 sm:text-sm sm:px-4 sm:py-2.5 rounded-xl font-medium transition shadow-lg shadow-blue-500/30 whitespace-nowrap"
-          >
-            Sumar mi Negocio
-          </a>
-        </header>
-
         {/* HERO */}
         <section className="w-full max-w-4xl mx-auto text-center py-8 sm:py-12">
           <span className="inline-block bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[10px] sm:text-xs px-3 sm:px-4 py-1.5 rounded-full font-semibold uppercase tracking-wider">
