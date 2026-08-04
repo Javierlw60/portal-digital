@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase';
 import { compressImageFile } from '@/lib/compressImage';
 import { normalizeSlug } from '@/lib/slug';
 import { useAuth } from '@/components/AuthProvider';
+import { playScanBeep, unlockScanBeep } from '@/lib/scanBeep';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 
 const supabase = createClient();
@@ -250,6 +251,7 @@ export default function NegocioPaginaDefinitiva() {
           videoConstraints: buildVideoConstraints(cameraConfig),
         },
         (decodedText) => {
+          playScanBeep();
           setCodigoBarras(decodedText);
           setMostrarEscaner(false);
           stopAndClear(html5QrCode);
@@ -670,7 +672,12 @@ export default function NegocioPaginaDefinitiva() {
               )}
               <button
                 type="button"
-                onClick={() => setMostrarEscaner(!mostrarEscaner)}
+                onClick={() => {
+                  if (!mostrarEscaner) {
+                    void unlockScanBeep();
+                  }
+                  setMostrarEscaner(!mostrarEscaner);
+                }}
                 className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition"
               >
                 {mostrarEscaner ? 'Cerrar Cámara' : 'Escanear'}
