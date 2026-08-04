@@ -26,7 +26,17 @@ export async function updateSession(request: NextRequest) {
   );
 
   // Refresca sesión
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // Usuario autenticado jamás debe ver el formulario "Sumá tu Negocio"
+  if (user && request.nextUrl.pathname === '/registro') {
+    const url = request.nextUrl.clone();
+    url.pathname = '/mi-negocio';
+    url.search = '';
+    return NextResponse.redirect(url);
+  }
 
   return supabaseResponse;
 }

@@ -171,21 +171,16 @@ export default function CuentaPage() {
               Ir al Admin
             </Link>
           )}
-          {profile?.negocio_id ? (
+          {(profile?.negocio_id ||
+            profile?.role === 'comercio' ||
+            isAdminProfile(profile)) && (
             <Link
               href="/mi-negocio"
               className="bg-blue-600 hover:bg-blue-500 px-3 py-2 rounded-xl text-sm font-medium"
             >
               Mi negocio
             </Link>
-          ) : (profile?.role === 'comercio' || isAdminProfile(profile)) ? (
-            <Link
-              href="/registro"
-              className="bg-blue-600 hover:bg-blue-500 px-3 py-2 rounded-xl text-sm font-medium"
-            >
-              Completar datos del negocio
-            </Link>
-          ) : null}
+          )}
         </div>
       </section>
 

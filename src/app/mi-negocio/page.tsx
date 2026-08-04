@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth-server';
-import { syncProfileWithOwnedNegocio, negocioHref } from '@/lib/owned-negocio';
+import { ensureNegocioForUser, negocioHref } from '@/lib/owned-negocio';
+import { MiNegocioClient } from './MiNegocioClient';
 
 export default async function MiNegocioPage() {
   const { supabase, user } = await getSessionUser();
@@ -9,22 +10,13 @@ export default async function MiNegocioPage() {
     redirect('/login?next=/mi-negocio');
   }
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('negocio_id, role')
-    .eq('id', user.id)
-    .maybeSingle();
+  const negocio = await ensureNegocioForUser(supabase, user);
 
-  const negocio = await syncProfileWithOwnedNegocio(
-    supabase,
-    user.id,
-    profile?.negocio_id,
-    profile?.role
-  );
-
-  if (!negocio) {
-    redirect('/registro');
+  if (negocio) {
+    redirect(negocioHref(negocio));
   }
 
-  redirect(negocioHref(negocio));
+  // Sin fila aún (p. ej. pending solo en sessionStorage): completar en cliente.
+  // Nunca redirigir a /registro.
+  return <MiNegocioClient />;
 }

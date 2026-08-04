@@ -47,21 +47,14 @@ export function SiteHeader() {
               >
                 Mi cuenta
               </Link>
-              {hasNegocio ? (
+              {(hasNegocio || esComercio) && (
                 <Link
                   href="/mi-negocio"
                   className="text-blue-400 hover:text-blue-300 px-2 py-2 rounded-lg transition whitespace-nowrap"
                 >
                   Mi negocio
                 </Link>
-              ) : esComercio ? (
-                <Link
-                  href="/registro"
-                  className="text-blue-400 hover:text-blue-300 px-2 py-2 rounded-lg transition whitespace-nowrap"
-                >
-                  Completar negocio
-                </Link>
-              ) : null}
+              )}
               {isAdmin ? (
                 <Link
                   href="/admin"

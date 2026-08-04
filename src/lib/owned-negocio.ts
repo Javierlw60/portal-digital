@@ -1,5 +1,9 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
+import type { SupabaseClient, User } from '@supabase/supabase-js';
 import { normalizeSlug } from '@/lib/slug';
+import {
+  pendingFromUserMetadata,
+  type PendingNegocio,
+} from '@/lib/pending-negocio';
 
 export type OwnedNegocio = {
   id: number;
@@ -7,6 +11,9 @@ export type OwnedNegocio = {
   localidad: string | null;
   nombre_comercio?: string | null;
 };
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Sb = SupabaseClient<any, any, any>;
 
 export function negocioHref(negocio: Pick<OwnedNegocio, 'slug' | 'localidad'>): string {
   const loc = normalizeSlug(negocio.localidad || 'local');
@@ -16,8 +23,7 @@ export function negocioHref(negocio: Pick<OwnedNegocio, 'slug' | 'localidad'>): 
 
 /** Busca el comercio del usuario por profile.negocio_id o por owner_id. */
 export async function findOwnedNegocio(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: SupabaseClient<any, any, any>,
+  supabase: Sb,
   userId: string,
   profileNegocioId?: number | null
 ): Promise<OwnedNegocio | null> {
@@ -47,8 +53,7 @@ export async function findOwnedNegocio(
  * sincroniza profiles.negocio_id y role=comercio.
  */
 export async function syncProfileWithOwnedNegocio(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  supabase: SupabaseClient<any, any, any>,
+  supabase: Sb,
   userId: string,
   profileNegocioId?: number | null,
   currentRole?: string | null
@@ -70,4 +75,77 @@ export async function syncProfileWithOwnedNegocio(
   }
 
   return negocio;
+}
+
+export async function createNegocioFromPending(
+  supabase: Sb,
+  userId: string,
+  pending: PendingNegocio
+): Promise<OwnedNegocio | null> {
+  const { data: inserted, error } = await supabase
+    .from('negocios')
+    .insert([
+      {
+        nombre_comercio: pending.nombre_comercio,
+        domicilio: pending.domicilio,
+        localidad: pending.slugLocalidad,
+        partido: pending.partido,
+        provincia: pending.provincia,
+        pais: pending.pais,
+        rubro: pending.rubro,
+        slug: pending.slug,
+        owner_id: userId,
+        tema_id: 1,
+      },
+    ])
+    .select('id, slug, localidad, nombre_comercio')
+    .single();
+
+  if (error) {
+    // Posible carrera/duplicado: recuperar por owner o slug
+    const existing = await findOwnedNegocio(supabase, userId);
+    if (existing) {
+      await syncProfileWithOwnedNegocio(supabase, userId, null, 'comercio');
+      return existing;
+    }
+    console.warn('createNegocioFromPending:', error.message);
+    return null;
+  }
+
+  await supabase
+    .from('profiles')
+    .update({ role: 'comercio', negocio_id: inserted.id })
+    .eq('id', userId);
+
+  return inserted as OwnedNegocio;
+}
+
+/**
+ * Tras confirmar email / login: enlaza negocio existente o lo crea
+ * desde user_metadata.pending_negocio (cargado en el signUp).
+ */
+export async function ensureNegocioForUser(
+  supabase: Sb,
+  user: User
+): Promise<OwnedNegocio | null> {
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role, negocio_id')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  const existing = await syncProfileWithOwnedNegocio(
+    supabase,
+    user.id,
+    profile?.negocio_id,
+    profile?.role
+  );
+  if (existing) return existing;
+
+  const pending = pendingFromUserMetadata(
+    user.user_metadata as Record<string, unknown> | undefined
+  );
+  if (!pending) return null;
+
+  return createNegocioFromPending(supabase, user.id, pending);
 }

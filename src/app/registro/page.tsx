@@ -12,19 +12,22 @@ import {
   authLabelClassName,
 } from '@/components/PasswordField';
 import {
+  PENDING_NEGOCIO_META_KEY,
   clearPendingNegocio,
-  readPendingNegocio,
   savePendingNegocio,
   type PendingNegocio,
 } from '@/lib/pending-negocio';
-import { findOwnedNegocio } from '@/lib/owned-negocio';
+import {
+  createNegocioFromPending,
+  findOwnedNegocio,
+} from '@/lib/owned-negocio';
 
 const MSG_DUPLICADO =
   'Ya existe un comercio registrado con este nombre en esa dirección.';
 
 export default function RegistroPage() {
   const router = useRouter();
-  const { user, profile, refreshProfile } = useAuth();
+  const { user, profile, loading: authLoading, refreshProfile } = useAuth();
   const supabase = createClient();
 
   const [email, setEmail] = useState('');
@@ -42,74 +45,22 @@ export default function RegistroPage() {
   const formatTitleCase = (value: string) =>
     value.replace(/\b\w/g, (char) => char.toUpperCase());
 
-  const completarNegocioPendiente = async (pending: PendingNegocio, userId: string) => {
-    const { data: inserted, error } = await supabase
-      .from('negocios')
-      .insert([
-        {
-          nombre_comercio: pending.nombre_comercio,
-          domicilio: pending.domicilio,
-          localidad: pending.slugLocalidad,
-          partido: pending.partido,
-          provincia: pending.provincia,
-          pais: pending.pais,
-          rubro: pending.rubro,
-          slug: pending.slug,
-          owner_id: userId,
-          tema_id: 1,
-        },
-      ])
-      .select('id')
-      .single();
-
-    if (error) throw error;
-
-    await supabase
-      .from('profiles')
-      .update({ role: 'comercio', negocio_id: inserted.id })
-      .eq('id', userId);
-
-    clearPendingNegocio();
-    await refreshProfile();
-    return pending;
-  };
-
+  // Sesión activa → nunca mostrar "Sumá tu Negocio"
   useEffect(() => {
-    async function resumeOrRedirect() {
-      if (!user) return;
-
-      // Si ya tiene comercio (owner_id o profile), no volver a "Unite a la red"
-      const existing = await findOwnedNegocio(
-        supabase,
-        user.id,
-        profile?.negocio_id
-      );
-      if (existing || profile?.negocio_id) {
-        clearPendingNegocio();
-        router.replace('/mi-negocio');
-        return;
-      }
-
-      const pending = readPendingNegocio();
-      if (!pending) return;
-      setLoading(true);
-      try {
-        const done = await completarNegocioPendiente(pending, user.id);
-        setMensaje(`¡Negocio "${done.nombre_comercio}" registrado con éxito!`);
-        router.push('/mi-negocio');
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
-        setMensaje('No se pudo completar el registro del comercio: ' + message);
-      } finally {
-        setLoading(false);
-      }
+    if (authLoading) return;
+    if (user) {
+      clearPendingNegocio();
+      router.replace('/mi-negocio');
     }
-    resumeOrRedirect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, profile?.negocio_id]);
+  }, [user, authLoading, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (user) {
+      router.replace('/mi-negocio');
+      return;
+    }
+
     setLoading(true);
     setMensaje('');
 
@@ -171,53 +122,53 @@ export default function RegistroPage() {
         slugLocalidad,
       };
 
-      let userId = user?.id;
-
-      if (!userId) {
-        if (!email.trim() || password.length < 6) {
-          setMensaje('Completá email y contraseña (mínimo 6 caracteres).');
-          return;
-        }
-
-        const origin = window.location.origin;
-        const { data: signData, error: signError } = await supabase.auth.signUp({
-          email: email.trim(),
-          password,
-          options: {
-            data: { role: 'comercio' },
-            emailRedirectTo: `${origin}/auth/callback?next=/cuenta`,
-          },
-        });
-
-        if (signError) throw signError;
-
-        if (!signData.session) {
-          savePendingNegocio(pending);
-          router.push(`/verificar-email?email=${encodeURIComponent(email.trim())}`);
-          return;
-        }
-
-        userId = signData.user?.id;
+      if (!email.trim() || password.length < 6) {
+        setMensaje('Completá email y contraseña (mínimo 6 caracteres).');
+        return;
       }
 
+      const origin = window.location.origin;
+      const callbackUrl = `${origin}/auth/callback?next=/mi-negocio`;
+
+      const { data: signData, error: signError } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: {
+          data: {
+            role: 'comercio',
+            [PENDING_NEGOCIO_META_KEY]: pending,
+          },
+          // Supabase Auth usa emailRedirectTo (= redirectTo del mail de confirmación)
+          emailRedirectTo: callbackUrl,
+        },
+      });
+
+      if (signError) throw signError;
+
+      // Backup local por si el callback no puede leer metadata
+      savePendingNegocio(pending);
+
+      if (!signData.session) {
+        router.push(`/verificar-email?email=${encodeURIComponent(email.trim())}`);
+        return;
+      }
+
+      const userId = signData.user?.id;
       if (!userId) {
         setMensaje('No se pudo obtener la sesión. Confirmá tu email e ingresá.');
         return;
       }
 
-      // Si ya tenía negocio, no duplicar
       const existing = await findOwnedNegocio(supabase, userId, profile?.negocio_id);
-      if (existing || profile?.negocio_id) {
-        setMensaje('Ya tenés un comercio asociado a tu cuenta.');
+      if (existing) {
         router.replace('/mi-negocio');
         return;
       }
 
-      const done = await completarNegocioPendiente(pending, userId);
-      setMensaje(`¡Negocio "${done.nombre_comercio}" registrado con éxito!`);
-      setTimeout(() => {
-        router.push('/mi-negocio');
-      }, 800);
+      await createNegocioFromPending(supabase, userId, pending);
+      clearPendingNegocio();
+      await refreshProfile();
+      router.push('/mi-negocio');
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       if (/duplicate|unique|23505/i.test(message)) {
@@ -230,6 +181,16 @@ export default function RegistroPage() {
     }
   };
 
+  if (authLoading || user) {
+    return (
+      <main className="flex-1 flex items-center justify-center p-6 bg-slate-950">
+        <p className="text-slate-400 animate-pulse text-sm">
+          {user ? 'Redirigiendo a tu negocio…' : 'Cargando…'}
+        </p>
+      </main>
+    );
+  }
+
   return (
     <main className="flex-1 flex items-center justify-center p-4 bg-slate-950 text-white">
       <div className="w-full max-w-lg bg-slate-900/80 backdrop-blur-md border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl text-white">
@@ -237,7 +198,9 @@ export default function RegistroPage() {
           <span className="text-xs uppercase tracking-widest bg-blue-600/30 text-blue-400 py-1 px-3 rounded-full font-semibold">
             Unite a la Red
           </span>
-          <h1 className="text-2xl sm:text-3xl font-bold mt-3 text-white">Sumá tu Negocio al Portal</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold mt-3 text-white">
+            Sumá tu Negocio al Portal
+          </h1>
           <p className="text-sm text-slate-400 mt-2">
             Creá tu cuenta con email. Te enviamos un enlace de confirmación.
           </p>
@@ -256,32 +219,30 @@ export default function RegistroPage() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {!user && (
-            <div className="grid grid-cols-1 gap-4 p-4 rounded-2xl bg-slate-950/50 border border-slate-800">
-              <div>
-                <label htmlFor="comercio-email" className={authLabelClassName}>
-                  Email de acceso
-                </label>
-                <input
-                  id="comercio-email"
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="comercio@email.com"
-                  className={authInputClassName}
-                  autoComplete="email"
-                />
-              </div>
-              <PasswordField
-                id="comercio-password"
-                value={password}
-                onChange={setPassword}
-                labelClassName={authLabelClassName}
-                autoComplete="new-password"
+          <div className="grid grid-cols-1 gap-4 p-4 rounded-2xl bg-slate-950/50 border border-slate-800">
+            <div>
+              <label htmlFor="comercio-email" className={authLabelClassName}>
+                Email de acceso
+              </label>
+              <input
+                id="comercio-email"
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="comercio@email.com"
+                className={authInputClassName}
+                autoComplete="email"
               />
             </div>
-          )}
+            <PasswordField
+              id="comercio-password"
+              value={password}
+              onChange={setPassword}
+              labelClassName={authLabelClassName}
+              autoComplete="new-password"
+            />
+          </div>
 
           <div>
             <label htmlFor="nombre-comercio" className={authLabelClassName}>
@@ -315,9 +276,7 @@ export default function RegistroPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className={authLabelClassName}>
-                Localidad / Ciudad
-              </label>
+              <label className={authLabelClassName}>Localidad / Ciudad</label>
               <input
                 type="text"
                 required
@@ -328,9 +287,7 @@ export default function RegistroPage() {
               />
             </div>
             <div>
-              <label className={authLabelClassName}>
-                Partido / Departamento
-              </label>
+              <label className={authLabelClassName}>Partido / Departamento</label>
               <input
                 type="text"
                 required
@@ -344,9 +301,7 @@ export default function RegistroPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className={authLabelClassName}>
-                Provincia
-              </label>
+              <label className={authLabelClassName}>Provincia</label>
               <input
                 type="text"
                 required
@@ -368,9 +323,7 @@ export default function RegistroPage() {
           </div>
 
           <div>
-            <label className={authLabelClassName}>
-              Rubro Principal
-            </label>
+            <label className={authLabelClassName}>Rubro Principal</label>
             <input
               type="text"
               required

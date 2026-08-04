@@ -6,8 +6,13 @@
 -- Auth SMTP (Supabase Dashboard → Authentication → Emails):
 -- Remitente: noreply@portal-digital.com.ar
 -- Habilitar "Confirm email" obligatorio.
--- Site URL / Redirect URLs: https://www.portal-digital.com.ar/auth/callback
---   y http://localhost:3000/auth/callback
+-- Site URL: https://www.portal-digital.com.ar  (NO usar /registro)
+-- Redirect URLs (Allow list):
+--   http://localhost:3000/auth/callback
+--   http://localhost:3000/auth/callback?next=/mi-negocio
+--   https://www.portal-digital.com.ar/auth/callback
+--   https://www.portal-digital.com.ar/auth/callback?next=/mi-negocio
+--   (o comodín) http://localhost:3000/**  y  https://www.portal-digital.com.ar/**
 
 -- Admin fijo: sermec@live.com.ar → profiles.role = 'admin'
 
