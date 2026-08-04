@@ -9,6 +9,7 @@ import {
   isAdminProfile,
   type Profile,
 } from '@/lib/auth';
+import { syncProfileWithOwnedNegocio } from '@/lib/owned-negocio';
 
 interface AuthContextValue {
   user: User | null;
@@ -46,6 +47,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           .single();
         next = (upserted as Profile) ?? next;
       }
+    }
+
+    // Si ya hay negocio por owner_id pero profiles.negocio_id está vacío, enlazarlo
+    const owned = await syncProfileWithOwnedNegocio(
+      supabase,
+      uid,
+      next?.negocio_id,
+      next?.role
+    );
+    if (owned && next && next.negocio_id !== owned.id) {
+      const { data: refreshed } = await supabase
+        .from('profiles')
+        .select('id, email, role, negocio_id, created_at')
+        .eq('id', uid)
+        .maybeSingle();
+      next = (refreshed as Profile | null) ?? {
+        ...next,
+        negocio_id: owned.id,
+        role: next.role === 'admin' ? 'admin' : 'comercio',
+      };
     }
 
     setProfile(next);

@@ -11,6 +11,7 @@ import {
   clearPendingNegocio,
   readPendingNegocio,
 } from '@/lib/pending-negocio';
+import { findOwnedNegocio, syncProfileWithOwnedNegocio } from '@/lib/owned-negocio';
 
 interface FavoritoRow {
   id: number;
@@ -30,19 +31,35 @@ export default function CuentaPage() {
   const [favoritos, setFavoritos] = useState<FavoritoRow[]>([]);
   const [cargandoFav, setCargandoFav] = useState(true);
 
-  // Completar registro de comercio pendiente tras confirmar email
+  // Enlazar negocio existente (owner_id) o completar pendiente tras confirmar email
   useEffect(() => {
     if (loading || !user) return;
-    const pending = readPendingNegocio();
-    if (!pending) return;
-    if (profile?.negocio_id) {
-      clearPendingNegocio();
-      return;
-    }
 
     let cancelled = false;
     (async () => {
       const supabase = createClient();
+
+      // Repara desfase profile.negocio_id ↔ negocios.owner_id
+      if (!profile?.negocio_id) {
+        const linked = await syncProfileWithOwnedNegocio(
+          supabase,
+          user.id,
+          null,
+          profile?.role
+        );
+        if (linked) {
+          clearPendingNegocio();
+          await refreshProfile();
+          if (!cancelled) router.replace('/mi-negocio');
+          return;
+        }
+      } else {
+        clearPendingNegocio();
+      }
+
+      const pending = readPendingNegocio();
+      if (!pending || profile?.negocio_id) return;
+
       try {
         const { data: inserted, error } = await supabase
           .from('negocios')
@@ -72,19 +89,29 @@ export default function CuentaPage() {
 
         clearPendingNegocio();
         await refreshProfile();
-        if (!cancelled) {
-          router.replace(`/${pending.slugLocalidad}/${pending.slug}`);
-        }
+        if (!cancelled) router.replace('/mi-negocio');
       } catch (err) {
         console.warn('Pendiente comercio:', err);
+        // Si falló por duplicado, recuperar el negocio por owner_id
+        const recovered = await findOwnedNegocio(supabase, user.id);
         clearPendingNegocio();
+        if (recovered) {
+          await syncProfileWithOwnedNegocio(
+            supabase,
+            user.id,
+            null,
+            profile?.role
+          );
+          await refreshProfile();
+          if (!cancelled) router.replace('/mi-negocio');
+        }
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [user, loading, profile?.negocio_id, refreshProfile, router]);
+  }, [user, loading, profile?.negocio_id, profile?.role, refreshProfile, router]);
 
   useEffect(() => {
     if (loading) return;
@@ -144,15 +171,21 @@ export default function CuentaPage() {
               Ir al Admin
             </Link>
           )}
-          {(profile?.role === 'comercio' || isAdminProfile(profile)) &&
-            !profile?.negocio_id && (
-              <Link
-                href="/registro"
-                className="bg-blue-600 hover:bg-blue-500 px-3 py-2 rounded-xl text-sm font-medium"
-              >
-                Completar datos del negocio
-              </Link>
-            )}
+          {profile?.negocio_id ? (
+            <Link
+              href="/mi-negocio"
+              className="bg-blue-600 hover:bg-blue-500 px-3 py-2 rounded-xl text-sm font-medium"
+            >
+              Mi negocio
+            </Link>
+          ) : (profile?.role === 'comercio' || isAdminProfile(profile)) ? (
+            <Link
+              href="/registro"
+              className="bg-blue-600 hover:bg-blue-500 px-3 py-2 rounded-xl text-sm font-medium"
+            >
+              Completar datos del negocio
+            </Link>
+          ) : null}
         </div>
       </section>
 

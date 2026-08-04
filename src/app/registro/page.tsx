@@ -17,6 +17,7 @@ import {
   savePendingNegocio,
   type PendingNegocio,
 } from '@/lib/pending-negocio';
+import { findOwnedNegocio } from '@/lib/owned-negocio';
 
 const MSG_DUPLICADO =
   'Ya existe un comercio registrado con este nombre en esa dirección.';
@@ -74,15 +75,28 @@ export default function RegistroPage() {
   };
 
   useEffect(() => {
-    async function resumePending() {
+    async function resumeOrRedirect() {
       if (!user) return;
+
+      // Si ya tiene comercio (owner_id o profile), no volver a "Unite a la red"
+      const existing = await findOwnedNegocio(
+        supabase,
+        user.id,
+        profile?.negocio_id
+      );
+      if (existing || profile?.negocio_id) {
+        clearPendingNegocio();
+        router.replace('/mi-negocio');
+        return;
+      }
+
       const pending = readPendingNegocio();
       if (!pending) return;
       setLoading(true);
       try {
         const done = await completarNegocioPendiente(pending, user.id);
         setMensaje(`¡Negocio "${done.nombre_comercio}" registrado con éxito!`);
-        router.push(`/${done.slugLocalidad}/${done.slug}`);
+        router.push('/mi-negocio');
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         setMensaje('No se pudo completar el registro del comercio: ' + message);
@@ -90,9 +104,9 @@ export default function RegistroPage() {
         setLoading(false);
       }
     }
-    resumePending();
+    resumeOrRedirect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
+  }, [user?.id, profile?.negocio_id]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -192,15 +206,17 @@ export default function RegistroPage() {
       }
 
       // Si ya tenía negocio, no duplicar
-      if (profile?.negocio_id) {
+      const existing = await findOwnedNegocio(supabase, userId, profile?.negocio_id);
+      if (existing || profile?.negocio_id) {
         setMensaje('Ya tenés un comercio asociado a tu cuenta.');
+        router.replace('/mi-negocio');
         return;
       }
 
       const done = await completarNegocioPendiente(pending, userId);
       setMensaje(`¡Negocio "${done.nombre_comercio}" registrado con éxito!`);
       setTimeout(() => {
-        router.push(`/${done.slugLocalidad}/${done.slug}`);
+        router.push('/mi-negocio');
       }, 800);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);

@@ -1,13 +1,13 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/components/AuthProvider';
-import { createClient } from '@/lib/supabase';
-import { normalizeSlug } from '@/lib/slug';
 
 export function SiteHeader() {
   const { user, profile, loading, isAdmin, signOut } = useAuth();
+  const hasNegocio = Boolean(profile?.negocio_id);
+  const esComercio = profile?.role === 'comercio' || isAdmin;
 
   return (
     <header className="border-b border-slate-800 bg-slate-950/90 backdrop-blur-md sticky top-0 z-50">
@@ -47,10 +47,14 @@ export function SiteHeader() {
               >
                 Mi cuenta
               </Link>
-              {(profile?.role === 'comercio' || isAdmin) && profile?.negocio_id ? (
-                <NegocioLink negocioId={profile.negocio_id} />
-              ) : null}
-              {(profile?.role === 'comercio' || isAdmin) && !profile?.negocio_id ? (
+              {hasNegocio ? (
+                <Link
+                  href="/mi-negocio"
+                  className="text-blue-400 hover:text-blue-300 px-2 py-2 rounded-lg transition whitespace-nowrap"
+                >
+                  Mi negocio
+                </Link>
+              ) : esComercio ? (
                 <Link
                   href="/registro"
                   className="text-blue-400 hover:text-blue-300 px-2 py-2 rounded-lg transition whitespace-nowrap"
@@ -78,37 +82,5 @@ export function SiteHeader() {
         </nav>
       </div>
     </header>
-  );
-}
-
-function NegocioLink({ negocioId }: { negocioId: number }) {
-  const [href, setHref] = useState('/cuenta');
-
-  useEffect(() => {
-    let cancelled = false;
-    const supabase = createClient();
-    supabase
-      .from('negocios')
-      .select('slug, localidad')
-      .eq('id', negocioId)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (cancelled || !data) return;
-        const loc = normalizeSlug(data.localidad || 'local');
-        const slug = normalizeSlug(data.slug || String(negocioId));
-        setHref(`/${loc}/${slug}`);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [negocioId]);
-
-  return (
-    <Link
-      href={href}
-      className="text-blue-400 hover:text-blue-300 px-2 py-2 rounded-lg transition whitespace-nowrap"
-    >
-      Mi negocio
-    </Link>
   );
 }

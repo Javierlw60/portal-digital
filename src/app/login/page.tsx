@@ -9,6 +9,7 @@ import {
   authInputClassName,
   authLabelClassName,
 } from '@/components/PasswordField';
+import { syncProfileWithOwnedNegocio } from '@/lib/owned-negocio';
 
 function LoginForm() {
   const router = useRouter();
@@ -19,25 +20,51 @@ function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [mensaje, setMensaje] = useState(() => searchParams.get('mensaje') || '');
   const verified = searchParams.get('verified') === '1';
+  const nextParam = searchParams.get('next');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setMensaje('');
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password,
     });
 
-    setLoading(false);
-
     if (error) {
+      setLoading(false);
       setMensaje(error.message);
       return;
     }
 
-    router.push('/cuenta');
+    const userId = data.user?.id;
+    let destination =
+      nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//')
+        ? nextParam
+        : '/cuenta';
+
+    if (userId) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role, negocio_id')
+        .eq('id', userId)
+        .maybeSingle();
+
+      const negocio = await syncProfileWithOwnedNegocio(
+        supabase,
+        userId,
+        profile?.negocio_id,
+        profile?.role
+      );
+
+      if (negocio) {
+        destination = '/mi-negocio';
+      }
+    }
+
+    setLoading(false);
+    router.push(destination);
     router.refresh();
   };
 

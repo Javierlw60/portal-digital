@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { normalizeSlug } from '@/lib/slug';
+import { syncProfileWithOwnedNegocio } from '@/lib/owned-negocio';
 
 function safeNextPath(next: string | null): string {
   if (!next || !next.startsWith('/') || next.startsWith('//')) return '/cuenta';
@@ -31,19 +31,16 @@ export async function GET(request: Request) {
           .eq('id', user.id)
           .maybeSingle();
 
-        // Si ya tiene comercio asociado, ir a su ficha
-        if (profile?.negocio_id) {
-          const { data: negocio } = await supabase
-            .from('negocios')
-            .select('slug, localidad')
-            .eq('id', profile.negocio_id)
-            .maybeSingle();
+        const negocio = await syncProfileWithOwnedNegocio(
+          supabase,
+          user.id,
+          profile?.negocio_id,
+          profile?.role
+        );
 
-          if (negocio?.slug) {
-            const loc = normalizeSlug(negocio.localidad || 'local');
-            const slug = normalizeSlug(negocio.slug);
-            return NextResponse.redirect(`${origin}/${loc}/${slug}`);
-          }
+        // Si ya tiene comercio, ir al panel de carga de productos
+        if (negocio) {
+          return NextResponse.redirect(`${origin}/mi-negocio`);
         }
 
         return NextResponse.redirect(`${origin}${next}`);
