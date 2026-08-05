@@ -35,8 +35,13 @@ export async function updateSession(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = '/mi-negocio';
     url.search = '';
-    return NextResponse.redirect(url);
+    const redirectRes = NextResponse.redirect(url);
+    redirectRes.headers.set('x-vercel-skip-toolbar', '1');
+    return redirectRes;
   }
+
+  // Ocultar Vercel Toolbar para visitantes (producción / preview)
+  supabaseResponse.headers.set('x-vercel-skip-toolbar', '1');
 
   return supabaseResponse;
 }

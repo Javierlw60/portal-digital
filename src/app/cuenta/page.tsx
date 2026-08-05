@@ -166,9 +166,9 @@ export default function CuentaPage() {
           {isAdminProfile(profile) && (
             <Link
               href="/admin"
-              className="bg-amber-500/20 text-amber-300 border border-amber-500/30 px-3 py-2 rounded-xl text-sm font-medium"
+              className="bg-slate-800 text-slate-300 border border-slate-700 hover:border-slate-500 px-3 py-2 rounded-xl text-sm font-medium"
             >
-              Ir al Admin
+              Panel Admin
             </Link>
           )}
           {(profile?.negocio_id ||

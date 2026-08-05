@@ -58,9 +58,9 @@ export function SiteHeader() {
               {isAdmin ? (
                 <Link
                   href="/admin"
-                  className="text-amber-400 hover:text-amber-300 px-2 sm:px-3 py-2 rounded-lg transition"
+                  className="text-slate-500 hover:text-slate-300 px-2 py-2 rounded-lg transition whitespace-nowrap text-xs"
                 >
-                  Admin
+                  Panel Admin
                 </Link>
               ) : null}
               <button

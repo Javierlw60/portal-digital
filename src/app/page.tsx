@@ -71,13 +71,10 @@ export default function Home() {
 
         {/* OFERTAS */}
         <section className="w-full max-w-5xl mx-auto mb-10 sm:mb-16">
-          <div className="flex flex-col gap-1 sm:flex-row sm:justify-between sm:items-center mb-4">
+          <div className="mb-4">
             <h2 className="text-xs sm:text-sm font-semibold text-slate-400 uppercase tracking-wider">
               Ofertas Destacadas de la Zona
             </h2>
-            <span className="text-[11px] sm:text-xs text-slate-500">
-              Rotación automática cada 7s
-            </span>
           </div>
 
           <div

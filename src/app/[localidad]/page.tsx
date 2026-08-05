@@ -150,7 +150,7 @@ export default async function LocalidadPage({ params }: LocalidadPageProps) {
               <div>
                 <h3 className="text-xl sm:text-2xl font-bold">Ventana de Ofertas 1</h3>
                 <p className="text-sm text-blue-100 mt-1">
-                  Rotación automática configurable
+                  Ofertas destacadas de la zona
                 </p>
               </div>
             </div>
