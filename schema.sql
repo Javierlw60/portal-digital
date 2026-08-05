@@ -229,22 +229,73 @@ CREATE TRIGGER on_auth_user_created
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 -- ==========================================================
--- RLS
+-- RLS (idempotente)
+-- Para un fix puntual de la alerta rls_disabled_in_public,
+-- también podés ejecutar solo: rls_policies.sql
 -- ==========================================================
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.negocios ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.productos ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.favoritos ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.catalogo_global_barras ENABLE ROW LEVEL SECURITY;
 
+-- Activar RLS en TODAS las tablas public (incluye localidades y futuras)
+DO $$
+DECLARE
+  r RECORD;
+BEGIN
+  FOR r IN
+    SELECT c.relname AS tablename
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+      AND c.relkind = 'r'
+  LOOP
+    EXECUTE format(
+      'ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY',
+      r.tablename
+    );
+  END LOOP;
+END $$;
+
+-- ---------- localidades ----------
+DROP POLICY IF EXISTS "localidades_select_public" ON public.localidades;
+CREATE POLICY "localidades_select_public" ON public.localidades
+  FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "localidades_insert_admin" ON public.localidades;
+CREATE POLICY "localidades_insert_admin" ON public.localidades
+  FOR INSERT TO authenticated
+  WITH CHECK (public.is_admin());
+
+DROP POLICY IF EXISTS "localidades_update_admin" ON public.localidades;
+CREATE POLICY "localidades_update_admin" ON public.localidades
+  FOR UPDATE TO authenticated
+  USING (public.is_admin())
+  WITH CHECK (public.is_admin());
+
+DROP POLICY IF EXISTS "localidades_delete_admin" ON public.localidades;
+CREATE POLICY "localidades_delete_admin" ON public.localidades
+  FOR DELETE TO authenticated
+  USING (public.is_admin());
+
+-- ---------- profiles ----------
 DROP POLICY IF EXISTS "profiles_select_own_or_admin" ON public.profiles;
 CREATE POLICY "profiles_select_own_or_admin" ON public.profiles
   FOR SELECT USING (auth.uid() = id OR public.is_admin());
 
+DROP POLICY IF EXISTS "profiles_insert_own" ON public.profiles;
+CREATE POLICY "profiles_insert_own" ON public.profiles
+  FOR INSERT TO authenticated
+  WITH CHECK (auth.uid() = id OR public.is_admin());
+
 DROP POLICY IF EXISTS "profiles_update_own_or_admin" ON public.profiles;
 CREATE POLICY "profiles_update_own_or_admin" ON public.profiles
-  FOR UPDATE USING (auth.uid() = id OR public.is_admin());
+  FOR UPDATE
+  USING (auth.uid() = id OR public.is_admin())
+  WITH CHECK (auth.uid() = id OR public.is_admin());
 
+DROP POLICY IF EXISTS "profiles_delete_admin" ON public.profiles;
+CREATE POLICY "profiles_delete_admin" ON public.profiles
+  FOR DELETE TO authenticated
+  USING (public.is_admin());
+
+-- ---------- negocios ----------
 DROP POLICY IF EXISTS "negocios_select_public" ON public.negocios;
 CREATE POLICY "negocios_select_public" ON public.negocios
   FOR SELECT USING (true);
@@ -256,8 +307,16 @@ CREATE POLICY "negocios_insert_auth" ON public.negocios
 
 DROP POLICY IF EXISTS "negocios_update_owner_admin" ON public.negocios;
 CREATE POLICY "negocios_update_owner_admin" ON public.negocios
-  FOR UPDATE USING (public.owns_negocio(id));
+  FOR UPDATE
+  USING (public.owns_negocio(id))
+  WITH CHECK (public.owns_negocio(id));
 
+DROP POLICY IF EXISTS "negocios_delete_owner_admin" ON public.negocios;
+CREATE POLICY "negocios_delete_owner_admin" ON public.negocios
+  FOR DELETE TO authenticated
+  USING (public.owns_negocio(id));
+
+-- ---------- productos ----------
 DROP POLICY IF EXISTS "productos_select_public" ON public.productos;
 CREATE POLICY "productos_select_public" ON public.productos
   FOR SELECT USING (true);
@@ -269,22 +328,38 @@ CREATE POLICY "productos_insert_owner" ON public.productos
 
 DROP POLICY IF EXISTS "productos_update_owner" ON public.productos;
 CREATE POLICY "productos_update_owner" ON public.productos
-  FOR UPDATE USING (public.owns_negocio(negocio_id));
+  FOR UPDATE
+  USING (public.owns_negocio(negocio_id))
+  WITH CHECK (public.owns_negocio(negocio_id));
 
 DROP POLICY IF EXISTS "productos_delete_owner" ON public.productos;
 CREATE POLICY "productos_delete_owner" ON public.productos
   FOR DELETE USING (public.owns_negocio(negocio_id));
 
+-- ---------- catalogo_global_barras ----------
 DROP POLICY IF EXISTS "catalogo_select_public" ON public.catalogo_global_barras;
 CREATE POLICY "catalogo_select_public" ON public.catalogo_global_barras
   FOR SELECT USING (true);
 
 DROP POLICY IF EXISTS "catalogo_upsert_auth" ON public.catalogo_global_barras;
-CREATE POLICY "catalogo_upsert_auth" ON public.catalogo_global_barras
-  FOR ALL TO authenticated
+DROP POLICY IF EXISTS "catalogo_insert_auth" ON public.catalogo_global_barras;
+DROP POLICY IF EXISTS "catalogo_update_auth" ON public.catalogo_global_barras;
+DROP POLICY IF EXISTS "catalogo_delete_admin" ON public.catalogo_global_barras;
+
+CREATE POLICY "catalogo_insert_auth" ON public.catalogo_global_barras
+  FOR INSERT TO authenticated
+  WITH CHECK (true);
+
+CREATE POLICY "catalogo_update_auth" ON public.catalogo_global_barras
+  FOR UPDATE TO authenticated
   USING (true)
   WITH CHECK (true);
 
+CREATE POLICY "catalogo_delete_admin" ON public.catalogo_global_barras
+  FOR DELETE TO authenticated
+  USING (public.is_admin());
+
+-- ---------- favoritos ----------
 DROP POLICY IF EXISTS "favoritos_select_own" ON public.favoritos;
 CREATE POLICY "favoritos_select_own" ON public.favoritos
   FOR SELECT USING (auth.uid() = user_id OR public.is_admin());
@@ -293,6 +368,12 @@ DROP POLICY IF EXISTS "favoritos_insert_own" ON public.favoritos;
 CREATE POLICY "favoritos_insert_own" ON public.favoritos
   FOR INSERT TO authenticated
   WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "favoritos_update_own" ON public.favoritos;
+CREATE POLICY "favoritos_update_own" ON public.favoritos
+  FOR UPDATE TO authenticated
+  USING (auth.uid() = user_id OR public.is_admin())
+  WITH CHECK (auth.uid() = user_id OR public.is_admin());
 
 DROP POLICY IF EXISTS "favoritos_delete_own" ON public.favoritos;
 CREATE POLICY "favoritos_delete_own" ON public.favoritos
