@@ -47,14 +47,6 @@ export function SiteHeader() {
               >
                 Mi cuenta
               </Link>
-              {(hasNegocio || esComercio) && (
-                <Link
-                  href="/mi-negocio"
-                  className="text-blue-400 hover:text-blue-300 px-2 py-2 rounded-lg transition whitespace-nowrap"
-                >
-                  Mi negocio
-                </Link>
-              )}
               {isAdmin ? (
                 <Link
                   href="/admin"
@@ -63,6 +55,18 @@ export function SiteHeader() {
                   Panel Admin
                 </Link>
               ) : null}
+              {(hasNegocio || (esComercio && !isAdmin)) && (
+                <Link
+                  href="/mi-negocio"
+                  className={
+                    isAdmin
+                      ? 'text-slate-500 hover:text-slate-300 px-2 py-2 rounded-lg transition whitespace-nowrap text-xs'
+                      : 'text-blue-400 hover:text-blue-300 px-2 py-2 rounded-lg transition whitespace-nowrap'
+                  }
+                >
+                  Mi negocio
+                </Link>
+              )}
               <button
                 type="button"
                 onClick={() => signOut()}

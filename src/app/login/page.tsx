@@ -9,6 +9,7 @@ import {
   authInputClassName,
   authLabelClassName,
 } from '@/components/PasswordField';
+import { defaultPostAuthPath } from '@/lib/auth';
 import { syncProfileWithOwnedNegocio } from '@/lib/owned-negocio';
 
 function LoginForm() {
@@ -39,15 +40,12 @@ function LoginForm() {
     }
 
     const userId = data.user?.id;
-    let destination =
-      nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//')
-        ? nextParam
-        : '/cuenta';
+    let destination = '/cuenta';
 
     if (userId) {
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role, negocio_id')
+        .select('role, email, negocio_id')
         .eq('id', userId)
         .maybeSingle();
 
@@ -55,12 +53,16 @@ function LoginForm() {
         supabase,
         userId,
         profile?.negocio_id,
-        profile?.role
+        profile?.role,
+        profile?.email ?? data.user?.email
       );
 
-      if (negocio) {
-        destination = '/mi-negocio';
-      }
+      destination = defaultPostAuthPath({
+        role: profile?.role,
+        email: profile?.email ?? data.user?.email,
+        hasNegocio: Boolean(negocio || profile?.negocio_id),
+        next: nextParam,
+      });
     }
 
     setLoading(false);

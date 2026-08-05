@@ -1,4 +1,5 @@
 import type { SupabaseClient, User } from '@supabase/supabase-js';
+import { isAdminUser, roleWhenLinkingNegocio } from '@/lib/auth';
 import { normalizeSlug } from '@/lib/slug';
 import {
   pendingFromUserMetadata,
@@ -50,26 +51,28 @@ export async function findOwnedNegocio(
 
 /**
  * Si el usuario ya tiene un negocio (p. ej. solo por owner_id),
- * sincroniza profiles.negocio_id y role=comercio.
+ * sincroniza profiles.negocio_id sin degradar rol admin.
  */
 export async function syncProfileWithOwnedNegocio(
   supabase: Sb,
   userId: string,
   profileNegocioId?: number | null,
-  currentRole?: string | null
+  currentRole?: string | null,
+  email?: string | null
 ): Promise<OwnedNegocio | null> {
   const negocio = await findOwnedNegocio(supabase, userId, profileNegocioId);
   if (!negocio) return null;
 
+  const nextRole = roleWhenLinkingNegocio(currentRole, email);
   const needsLink = profileNegocioId !== negocio.id;
-  const needsRole = currentRole !== 'admin' && currentRole !== 'comercio';
+  const needsRole = currentRole !== nextRole;
 
   if (needsLink || needsRole) {
     await supabase
       .from('profiles')
       .update({
         negocio_id: negocio.id,
-        ...(needsRole ? { role: 'comercio' } : {}),
+        role: nextRole,
       })
       .eq('id', userId);
   }
@@ -80,8 +83,19 @@ export async function syncProfileWithOwnedNegocio(
 export async function createNegocioFromPending(
   supabase: Sb,
   userId: string,
-  pending: PendingNegocio
+  pending: PendingNegocio,
+  opts?: { role?: string | null; email?: string | null }
 ): Promise<OwnedNegocio | null> {
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role, email')
+    .eq('id', userId)
+    .maybeSingle();
+
+  const role = opts?.role ?? profile?.role;
+  const email = opts?.email ?? profile?.email;
+  const nextRole = roleWhenLinkingNegocio(role, email);
+
   const { data: inserted, error } = await supabase
     .from('negocios')
     .insert([
@@ -102,10 +116,15 @@ export async function createNegocioFromPending(
     .single();
 
   if (error) {
-    // Posible carrera/duplicado: recuperar por owner o slug
     const existing = await findOwnedNegocio(supabase, userId);
     if (existing) {
-      await syncProfileWithOwnedNegocio(supabase, userId, null, 'comercio');
+      await syncProfileWithOwnedNegocio(
+        supabase,
+        userId,
+        null,
+        role,
+        email
+      );
       return existing;
     }
     console.warn('createNegocioFromPending:', error.message);
@@ -114,7 +133,7 @@ export async function createNegocioFromPending(
 
   await supabase
     .from('profiles')
-    .update({ role: 'comercio', negocio_id: inserted.id })
+    .update({ role: nextRole, negocio_id: inserted.id })
     .eq('id', userId);
 
   return inserted as OwnedNegocio;
@@ -130,7 +149,7 @@ export async function ensureNegocioForUser(
 ): Promise<OwnedNegocio | null> {
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role, negocio_id')
+    .select('role, negocio_id, email')
     .eq('id', user.id)
     .maybeSingle();
 
@@ -138,14 +157,23 @@ export async function ensureNegocioForUser(
     supabase,
     user.id,
     profile?.negocio_id,
-    profile?.role
+    profile?.role,
+    profile?.email ?? user.email
   );
   if (existing) return existing;
+
+  // Admin sin comercio propio: no forzar creación automática
+  if (isAdminUser({ role: profile?.role, email: profile?.email ?? user.email })) {
+    return null;
+  }
 
   const pending = pendingFromUserMetadata(
     user.user_metadata as Record<string, unknown> | undefined
   );
   if (!pending) return null;
 
-  return createNegocioFromPending(supabase, user.id, pending);
+  return createNegocioFromPending(supabase, user.id, pending, {
+    role: profile?.role,
+    email: profile?.email ?? user.email,
+  });
 }

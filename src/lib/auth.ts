@@ -19,6 +19,51 @@ export function isAdminProfile(profile?: Profile | null): boolean {
   return profile.role === 'admin' || isAdminEmail(profile.email);
 }
 
+export function isAdminUser(opts: {
+  role?: string | null;
+  email?: string | null;
+}): boolean {
+  return opts.role === 'admin' || isAdminEmail(opts.email);
+}
+
+/** Rol a guardar al vincular un negocio: nunca degrada a un admin. */
+export function roleWhenLinkingNegocio(
+  currentRole?: string | null,
+  email?: string | null
+): UserRole {
+  if (isAdminUser({ role: currentRole, email })) return 'admin';
+  return 'comercio';
+}
+
+/**
+ * Destino post-login / post-confirmación.
+ * Admin → /admin (salvo next explícito bajo /admin).
+ */
+export function defaultPostAuthPath(opts: {
+  role?: string | null;
+  email?: string | null;
+  hasNegocio?: boolean;
+  next?: string | null;
+}): string {
+  const next = opts.next;
+  const safeNext =
+    next && next.startsWith('/') && !next.startsWith('//') ? next : null;
+
+  if (isAdminUser({ role: opts.role, email: opts.email })) {
+    if (safeNext && (safeNext === '/admin' || safeNext.startsWith('/admin/'))) {
+      return safeNext;
+    }
+    return '/admin';
+  }
+
+  if (safeNext && safeNext !== '/registro' && !safeNext.startsWith('/registro?')) {
+    return safeNext;
+  }
+
+  if (opts.hasNegocio) return '/mi-negocio';
+  return '/cuenta';
+}
+
 export function canManageNegocio(
   profile: Profile | null | undefined,
   negocioId: number

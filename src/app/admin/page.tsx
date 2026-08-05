@@ -284,17 +284,21 @@ export default function AdminPage() {
       </section>
 
       {/* a) Alta de comercio */}
-      <section className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 space-y-4">
+      <section
+        id="alta-comercio"
+        className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 space-y-4 scroll-mt-24"
+      >
         <div>
           <h2 className="text-lg font-bold">Crear / Alta de Comercio</h2>
           <p className="text-xs text-slate-500 mt-1">
-            Registrá un negocio completo y asociarlo al email de un cliente.
+            Registrá un negocio completo y asociarlo al email de un cliente (o al
+            tuyo: {ADMIN_EMAIL}) sin perder el rol admin.
           </p>
         </div>
 
         <form onSubmit={crearComercio} className="space-y-4">
           <div>
-            <label className={authLabelClassName}>Email del cliente</label>
+            <label className={authLabelClassName}>Email del cliente / dueño</label>
             <input
               type="email"
               required
@@ -303,6 +307,13 @@ export default function AdminPage() {
               placeholder="cliente@email.com"
               className={authInputClassName}
             />
+            <button
+              type="button"
+              onClick={() => setField('emailCliente', ADMIN_EMAIL)}
+              className="mt-1.5 text-xs text-slate-500 hover:text-slate-300 underline"
+            >
+              Usar mi email de admin
+            </button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

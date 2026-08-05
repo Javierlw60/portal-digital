@@ -50,11 +50,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     // Si ya hay negocio por owner_id pero profiles.negocio_id está vacío, enlazarlo
+    // (preserva role admin)
     const owned = await syncProfileWithOwnedNegocio(
       supabase,
       uid,
       next?.negocio_id,
-      next?.role
+      next?.role,
+      next?.email ?? email
     );
     if (owned && next && next.negocio_id !== owned.id) {
       const { data: refreshed } = await supabase
@@ -65,7 +67,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       next = (refreshed as Profile | null) ?? {
         ...next,
         negocio_id: owned.id,
-        role: next.role === 'admin' ? 'admin' : 'comercio',
+        role: next.role === 'admin' || email?.toLowerCase() === ADMIN_EMAIL
+          ? 'admin'
+          : 'comercio',
       };
     }
 

@@ -6,7 +6,11 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { useAuth } from '@/components/AuthProvider';
 import { normalizeSlug } from '@/lib/slug';
-import { isAdminProfile } from '@/lib/auth';
+import {
+  isAdminProfile,
+  isAdminUser,
+  roleWhenLinkingNegocio,
+} from '@/lib/auth';
 import {
   clearPendingNegocio,
   readPendingNegocio,
@@ -39,18 +43,32 @@ export default function CuentaPage() {
     (async () => {
       const supabase = createClient();
 
+      const goAfterLink = () => {
+        if (
+          isAdminUser({
+            role: profile?.role,
+            email: profile?.email ?? user.email,
+          })
+        ) {
+          router.replace('/admin');
+        } else {
+          router.replace('/mi-negocio');
+        }
+      };
+
       // Repara desfase profile.negocio_id ↔ negocios.owner_id
       if (!profile?.negocio_id) {
         const linked = await syncProfileWithOwnedNegocio(
           supabase,
           user.id,
           null,
-          profile?.role
+          profile?.role,
+          profile?.email ?? user.email
         );
         if (linked) {
           clearPendingNegocio();
           await refreshProfile();
-          if (!cancelled) router.replace('/mi-negocio');
+          if (!cancelled) goAfterLink();
           return;
         }
       } else {
@@ -84,12 +102,15 @@ export default function CuentaPage() {
 
         await supabase
           .from('profiles')
-          .update({ role: 'comercio', negocio_id: inserted.id })
+          .update({
+            role: roleWhenLinkingNegocio(profile?.role, profile?.email ?? user.email),
+            negocio_id: inserted.id,
+          })
           .eq('id', user.id);
 
         clearPendingNegocio();
         await refreshProfile();
-        if (!cancelled) router.replace('/mi-negocio');
+        if (!cancelled) goAfterLink();
       } catch (err) {
         console.warn('Pendiente comercio:', err);
         // Si falló por duplicado, recuperar el negocio por owner_id
@@ -100,10 +121,11 @@ export default function CuentaPage() {
             supabase,
             user.id,
             null,
-            profile?.role
+            profile?.role,
+            profile?.email ?? user.email
           );
           await refreshProfile();
-          if (!cancelled) router.replace('/mi-negocio');
+          if (!cancelled) goAfterLink();
         }
       }
     })();
